@@ -907,22 +907,6 @@ $stat_avg_grade       = count($completed_quizzes)
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LearnFlow – Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
-<?php if ($db_theme): ?>
-<style id="lf-theme-vars">
-:root {
-  --primary: hsl(<?php echo htmlspecialchars($db_theme['primary_color']); ?>);
-  --primary-dark: hsl(<?php echo htmlspecialchars($db_theme['primary_dark']); ?>);
-  --primary-light: hsl(<?php echo htmlspecialchars($db_theme['primary_light']); ?>);
-  --bg: hsl(<?php echo htmlspecialchars($db_theme['bg_color']); ?>);
-  --surface: hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?>);
-  --border: hsl(<?php echo htmlspecialchars($db_theme['border_color']); ?>);
-  --text: hsl(<?php echo htmlspecialchars($db_theme['text_color']); ?>);
-  --text-2: hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?>);
-  <?php if ($db_theme['accent_color']): ?>--secondary: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>);<?php endif; ?>
-  --primary-glow: hsla(<?php echo htmlspecialchars($db_theme['primary_color']); ?>, 0.12);
-}
-</style>
-<?php endif; ?>
 <style>
 /* ===== CSS VARIABLES ===== */
 :root {
@@ -1425,6 +1409,22 @@ tr:hover td{background:var(--surface-2)}
   .tab-pill{flex:1;text-align:center}
 }
 </style>
+<?php if ($db_theme): ?>
+<style id="lf-theme-vars">
+:root {
+  --primary: hsl(<?php echo htmlspecialchars($db_theme['primary_color']); ?>);
+  --primary-dark: hsl(<?php echo htmlspecialchars($db_theme['primary_dark']); ?>);
+  --primary-light: hsl(<?php echo htmlspecialchars($db_theme['primary_light']); ?>);
+  --bg: hsl(<?php echo htmlspecialchars($db_theme['bg_color']); ?>);
+  --surface: hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?>);
+  --border: hsl(<?php echo htmlspecialchars($db_theme['border_color']); ?>);
+  --text: hsl(<?php echo htmlspecialchars($db_theme['text_color']); ?>);
+  --text-2: hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?>);
+  <?php if ($db_theme['accent_color']): ?>--secondary: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>); --accent: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>);<?php endif; ?>
+  --primary-glow: hsla(<?php echo htmlspecialchars($db_theme['primary_color']); ?>, 0.12);
+}
+</style>
+<?php endif; ?>
 </head>
 <body>
 
