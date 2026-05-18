@@ -16,6 +16,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/config/mail.php';
+require_once __DIR__ . '/config/theme.php';
 
 $error   = '';
 $success = '';
@@ -50,41 +51,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 $post_email = htmlspecialchars($_POST['email'] ?? '');
 ?>
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LearnFlow – Sign In</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<?= get_theme_css($conn) ?>
 <style>
+/* ── Login-page extras (not part of the theme system) ── */
 :root {
-  --primary: #CC3A72;
-  --primary-light: #FAE0EB;
-  --primary-dark: #a82860;
-  --secondary: #4AAEE8;
-  --bg: #FDF0F5;
-  --surface: #FFFFFF;
-  --surface-2: #F8E4EF;
-  --border: #F0C0D8;
-  --text: #2a0e1c;
-  --text-2: #7a3a58;
-  --text-3: #c090a8;
-  --danger: #D84040;
-  --success: #0d9e70;
-  --radius: 12px;
+  --danger:    #D84040;
+  --success:   #0d9e70;
+  --radius:    12px;
   --radius-sm: 8px;
-}
-[data-theme="dark"] {
-  --primary: #E8608A;
-  --primary-light: #2e1f2a;
-  --primary-dark: #c43f68;
-  --bg: #16161f;
-  --surface: #1f1f2e;
-  --surface-2: #272738;
-  --border: #343450;
-  --text: #eceaf6;
-  --text-2: #9e96bc;
-  --text-3: #565070;
 }
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -111,7 +91,7 @@ body {
   border-radius: 50px; padding: 6px 14px;
   font-size: 12px; font-weight: 600; color: var(--text-2);
   cursor: pointer; display: flex; align-items: center; gap: 6px;
-  box-shadow: 0 2px 12px rgba(204,58,114,.12); transition: .2s; z-index: 200;
+  box-shadow: 0 2px 12px hsl(var(--primary-hsl) / .12); transition: .2s; z-index: 200;
 }
 .theme-toggle:hover { border-color: var(--primary); color: var(--primary); }
 .theme-toggle svg { width:14px; height:14px; }
@@ -327,7 +307,7 @@ body {
 .input-wrap input::placeholder { color:var(--text-3); }
 .input-wrap input:focus {
   border-color:var(--primary); background:var(--surface);
-  box-shadow:0 0 0 4px rgba(204,58,114,.08);
+  box-shadow:0 0 0 4px hsl(var(--primary-hsl) / .08);
 }
 .input-wrap input.invalid { border-color:var(--danger); box-shadow:0 0 0 3px rgba(216,64,64,.08); }
 
@@ -347,7 +327,7 @@ body {
   background:linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   color:#fff; font-family:'Syne',sans-serif; font-size:14px; font-weight:700;
   letter-spacing:.3px; cursor:pointer;
-  box-shadow:0 4px 20px rgba(204,58,114,.38), inset 0 1px 0 rgba(255,255,255,.15);
+  box-shadow:0 4px 20px hsl(var(--primary-hsl) / .38), inset 0 1px 0 rgba(255,255,255,.15);
   transition:.2s; display:flex; align-items:center; justify-content:center; gap:10px;
   margin-top:4px; position:relative; overflow:hidden;
 }
@@ -356,7 +336,7 @@ body {
   background:linear-gradient(135deg,rgba(255,255,255,.12),transparent);
   opacity:0; transition:opacity .2s;
 }
-.btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 28px rgba(204,58,114,.46), inset 0 1px 0 rgba(255,255,255,.15); }
+.btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 28px hsl(var(--primary-hsl) / .46), inset 0 1px 0 rgba(255,255,255,.15); }
 .btn-primary:hover::after { opacity:1; }
 .btn-primary:active { transform:translateY(0); }
 .btn-primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
@@ -416,8 +396,17 @@ body {
   .brand-lockup { margin-bottom:28px; }
 }
 </style>
+<script>
+// Set data-theme BEFORE first paint to avoid flash of wrong theme
+(function() {
+  var t = localStorage.getItem('lf_theme') ||
+    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
 </head>
 <body>
+<?php require_once __DIR__ . '/theme-preview-bar.php'; ?>
 
 <!-- Theme toggle -->
 <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">
@@ -626,10 +615,9 @@ body {
 </div>
 
 <script>
-// ── Theme ──
-const savedTheme = localStorage.getItem('lf_theme') ||
-  (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-applyTheme(savedTheme);
+// ── Dark / Light toggle ──
+// The `data-theme` attribute is already set before paint (see <head> script).
+// Here we just sync the button UI on load and handle the toggle.
 
 function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -644,9 +632,13 @@ function applyTheme(t) {
   }
   localStorage.setItem('lf_theme', t);
 }
+
 function toggleTheme() {
   applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 }
+
+// Sync button UI with whatever was set before paint
+applyTheme(document.documentElement.getAttribute('data-theme') || 'light');
 
 // ── Flow lines ──
 (function() {
