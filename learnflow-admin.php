@@ -1617,48 +1617,34 @@ if ($admin_user_id) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LearnFlow – Admin Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
-<?php if ($db_theme): ?>
-<style id="lf-theme-vars">
-:root {
-  --primary: hsl(<?php echo htmlspecialchars($db_theme['primary_color']); ?>);
-  --primary-dark: hsl(<?php echo htmlspecialchars($db_theme['primary_dark']); ?>);
-  --primary-light: hsl(<?php echo htmlspecialchars($db_theme['primary_light']); ?>);
-  --bg: hsl(<?php echo htmlspecialchars($db_theme['bg_color']); ?>);
-  --surface: hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?>);
-  --border: hsl(<?php echo htmlspecialchars($db_theme['border_color']); ?>);
-  --text: hsl(<?php echo htmlspecialchars($db_theme['text_color']); ?>);
-  --text-2: hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?>);
-  <?php if ($db_theme['accent_color']): ?>--secondary: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>);<?php endif; ?>
-  --primary-glow: hsla(<?php echo htmlspecialchars($db_theme['primary_color']); ?>, 0.12);
-}
-</style>
-<?php endif; ?>
+
 <style>
 :root {
+  /* ── Semantic / fixed colours (NOT overridden by theme) ── */
+  --accent: #E09010;
+  --danger: #D84040;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --info: #3B82F6;
+  /* ── Default theme fallbacks (overridden by lf-theme-vars above when DB theme loaded) ── */
   --primary: #CC3A72;
   --primary-light: #FAE0EB;
   --primary-dark: #a82860;
   --secondary: #4AAEE8;
-  --accent: #E09010;
-  --danger: #D84040;
-  --purple: #4AAEE8;
   --bg: #FDF0F5;
   --primary-glow: #ed3ac61f;
-  --success: #10B981;
-  --warning: #F59E0B;
-  --info: #3B82F6;
   --surface: #FFFFFF;
   --surface-2: #F8E4EF;
+  --surface-3: #F0E0EC;
   --border: #F0C0D8;
+  --border-strong: #E090C0;
   --text: #2a0e1c;
-  --text-2: #7a3a58;  
+  --text-2: #7a3a58;
   --text-3: #c090a8;
-  --surface-3: #DDD6FE;
-  --border: #DDD6FE;
-  --border-strong: #C4B5FD;
-  --shadow: 0 2px 12px rgba(124,58,237,0.09);
-  --shadow-md: 0 4px 24px rgba(124,58,237,0.16);
-  --shadow-lg: 0 8px 40px rgba(124,58,237,0.22);
+  /* ── Layout / shadow / radius (never themed) ── */
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 24px rgba(0,0,0,0.13);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.18);
   --radius: 14px;
   --radius-sm: 9px;
   --radius-xs: 6px;
@@ -1666,25 +1652,26 @@ if ($admin_user_id) {
   --topbar-h: 62px;
 }
 [data-theme="dark"] {
+  /* ── Dark-mode fallbacks (overridden by lf-theme-vars when dynamic theme active) ── */
   --primary: #E8608A;
   --primary-light: #2e1f2a;
   --primary-dark: #c43f68;
   --secondary: #60B8E8;
-  --accent: #E8A84A;
-  --danger: #E06868;
-  --purple: #60B8E8;
   --bg: #16161f;
   --surface: #1f1f2e;
   --surface-2: #272738;
+  --surface-3: #271c52;
   --border: #343450;
+  --border-strong: #454565;
   --text: #eceaf6;
   --text-2: #9e96bc;
   --text-3: #565070;
   --primary-glow: rgba(167,139,250,0.13);
+  /* ── Fixed semantic colours in dark mode ── */
+  --danger: #E06868;
   --success: #34D399;
   --warning: #FBBF24;
   --info: #60A5FA;
-  --surface-3: #271c52;
   --shadow: 0 2px 14px rgba(0,0,0,0.45);
   --shadow-md: 0 4px 28px rgba(0,0,0,0.55);
   --shadow-lg: 0 8px 48px rgba(0,0,0,0.65);
@@ -2066,6 +2053,27 @@ input:focus,select:focus,textarea:focus{border-color:var(--primary);background:v
 .hs-warn{background:rgba(245,158,11,.12);color:var(--warning)}
 .hs-err{background:rgba(216,64,64,.10);color:var(--danger)}
 </style>
+<?php if ($db_theme): ?>
+<style id="lf-theme-vars">
+/* ── Dynamic theme — placed LAST in <head> so it wins the CSS cascade ── */
+:root {
+  --primary:       hsl(<?php echo htmlspecialchars($db_theme['primary_color']); ?>);
+  --primary-dark:  hsl(<?php echo htmlspecialchars($db_theme['primary_dark']); ?>);
+  --primary-light: hsl(<?php echo htmlspecialchars($db_theme['primary_light']); ?>);
+  --bg:            hsl(<?php echo htmlspecialchars($db_theme['bg_color']); ?>);
+  --surface:       hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?>);
+  --surface-2:     hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?> / 0.72);
+  --border:        hsl(<?php echo htmlspecialchars($db_theme['border_color']); ?>);
+  --text:          hsl(<?php echo htmlspecialchars($db_theme['text_color']); ?>);
+  --text-2:        hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?>);
+  --text-3:        hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?> / 0.6);
+  <?php if ($db_theme['accent_color']): ?>
+  --secondary:     hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>);
+  <?php endif; ?>
+  --primary-glow:  hsla(<?php echo htmlspecialchars($db_theme['primary_color']); ?>, 0.12);
+}
+</style>
+<?php endif; ?>
 </head>
 <body>
 
@@ -6309,8 +6317,9 @@ function _applyThemeVars(t) {
   if (!style) {
     style = document.createElement('style');
     style.id = 'lf-theme-vars';
-    document.head.appendChild(style);
   }
+  // Always move to end of <head> so it wins the CSS cascade over static styles
+  document.head.appendChild(style);
   const dk   = _darkVariants(t);
   const surf = t.surface || '0 0% 100%';
   style.textContent = `
@@ -6361,6 +6370,11 @@ function applyThemePreset(jsonStr) {
   _applyThemeVars({ ...t, surface: '0 0% 100%' });
   const el = document.getElementById('themeCurrentName');
   if (el) el.textContent = t.name;
+  // Sync HSL labels in the Custom Color Builder so they reflect the selected preset
+  const hslLabelP = document.getElementById('themePickerPrimaryHsl');
+  const hslLabelA = document.getElementById('themePickerAccentHsl');
+  if (hslLabelP) hslLabelP.textContent = t.p;
+  if (hslLabelA) hslLabelA.textContent = t.acc;
   showToast(`Theme preview: ${t.name} — click Save to apply to all portals.`, '');
 }
 
@@ -6453,14 +6467,27 @@ async function saveThemeToDB() {
     if (data.success) {
       showToast('✅ Theme saved and applied to all portals!', 'success');
       status.innerHTML = '<span style="color:var(--success)">✅ Saved — live-applied to all open portals.</span>';
-      // Broadcast to all open tabs so they hot-reload without a page refresh
-      const _bc_payload = JSON.stringify({
-        p:   _pendingTheme.primary_color, d: _pendingTheme.primary_dark,
-        l:   _pendingTheme.primary_light, bg: _pendingTheme.bg_color,
-        surface: _pendingTheme.surface_color, border: _pendingTheme.border_color,
-        text: _pendingTheme.text_color, text2: _pendingTheme.text_secondary,
-        acc: _pendingTheme.accent_color,
-      });
+
+      // ── Apply immediately in THIS tab (BroadcastChannel doesn't fire in sender) ──
+      const _themeVars = {
+        p:       _pendingTheme.primary_color,
+        d:       _pendingTheme.primary_dark,
+        l:       _pendingTheme.primary_light,
+        bg:      _pendingTheme.bg_color,
+        surface: _pendingTheme.surface_color,
+        border:  _pendingTheme.border_color,
+        text:    _pendingTheme.text_color,
+        text2:   _pendingTheme.text_secondary,
+        acc:     _pendingTheme.accent_color,
+      };
+      _applyThemeVars(_themeVars);
+
+      // Update the preview name badge
+      const _nameEl = document.getElementById('themeCurrentName');
+      if (_nameEl) _nameEl.textContent = _pendingTheme.name || 'Custom';
+
+      // Broadcast to all OTHER open tabs so they hot-reload without a page refresh
+      const _bc_payload = JSON.stringify(_themeVars);
       try { const _bc = new BroadcastChannel('lf-theme'); _bc.postMessage({ type:'theme-update', theme:_bc_payload }); _bc.close(); } catch(_e) {}
       try { localStorage.setItem('lf-theme-data', _bc_payload); } catch(_e) {}
     } else {
