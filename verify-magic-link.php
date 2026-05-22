@@ -1,11 +1,4 @@
 <?php
-/**
- * LearnFlow LMS - Verify Magic Link
- * GET /verify-magic-link.php?token=xxxxx
- *
- * Verifies token and creates session, then redirects to login page.
- * Login page will auto-detect session and show dashboard.
- */
 
 session_start();
 

@@ -1,13 +1,4 @@
 <?php
-/**
- * LearnFlow LMS — Theme Settings API
- *
- * GET  ?action=get           → returns the active theme
- * GET  ?action=presets       → returns all available presets
- * POST ?action=apply_preset  { preset_id }  → apply a built-in preset (admin only)
- * POST ?action=save_custom   { all fields } → save a fully custom theme (admin only)
- * POST ?action=reset         → reset to Rose Pink default (admin only)
- */
 
 session_start();
 header('Content-Type: application/json');

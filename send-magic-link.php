@@ -1,8 +1,5 @@
 <?php
-/**
- * LearnFlow LMS - Send Magic Link
- * POST /send-magic-link.php   body: email=user@plpasig.edu.ph
- */
+
 
 header('Content-Type: application/json');
 

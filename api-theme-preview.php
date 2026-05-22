@@ -1,15 +1,5 @@
 <?php
-/**
- * LearnFlow LMS — Theme Preview API
- *
- * Stores a temporary theme override in the admin's PHP session.
- * Other users are NOT affected — only the session that called set_preview.
- *
- * GET  ?action=status          → { previewing: bool, theme?: {...} }
- * POST ?action=set_preview     { ...theme fields }  → starts preview
- * POST ?action=commit_preview  → saves the preview theme to DB (makes it live for all)
- * POST ?action=cancel_preview  → discards preview, reverts to DB theme
- */
+
 
 session_start();
 header('Content-Type: application/json');

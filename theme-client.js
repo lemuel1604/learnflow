@@ -1,35 +1,4 @@
-/**
- * LearnFlow LMS — Theme Client
- *
- * ════════════════════════════════════════════════════════════════
- * HOW TO INTEGRATE
- * ════════════════════════════════════════════════════════════════
- *
- * 1. Add this tag to the <head> of every portal (admin, instructor, student, login):
- *
- *      <script src="theme-client.js"></script>
- *
- * 2. That's it. The script will:
- *    a. Apply the server-rendered theme on page load (CSS vars already injected
- *       by config/theme.php — this just stores a reference so applyThemeLive()
- *       can work without a reload).
- *    b. Open an EventSource connection to api-theme-sse.php.
- *    c. Apply any incoming theme_update events to the live page CSS in real time.
- *    d. Auto-reconnect if the connection drops.
- *
- * ════════════════════════════════════════════════════════════════
- * EXPORTED GLOBAL FUNCTION
- * ════════════════════════════════════════════════════════════════
- *
- * window.applyThemeLive(theme)
- *   Accepts the theme object returned by the API (same shape as the DB row)
- *   and hot-swaps all CSS custom properties on the running page without
- *   any reload.  Can also be called by admin-theme-settings.php's JS to
- *   give instant preview while the admin is building a custom theme.
- *
- * window.LearnFlowTheme.disconnect()
- *   Cleanly closes the SSE connection (e.g. on logout).
- */
+
 
 (function () {
   'use strict';

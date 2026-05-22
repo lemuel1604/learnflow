@@ -1,11 +1,5 @@
 <?php
-/**
- * LearnFlow LMS — Announcement Read/Dismiss API
- * Accessible by any authenticated user (student, instructor, admin).
- *
- * POST ?action=mark_read   { announcement_id }
- * GET  ?action=get_unread  — returns count of unread admin announcements for the session user
- */
+
 
 session_start();
 header('Content-Type: application/json');

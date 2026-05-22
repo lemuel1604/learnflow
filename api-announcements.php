@@ -1,14 +1,5 @@
 <?php
-/**
- * LearnFlow LMS — Announcements API
- *
- * Routes (resolved via ?action=):
- *   GET    ?action=get_users
- *   POST   ?action=create
- *   GET    ?action=list[&status=sent|scheduled]
- *   GET    ?action=get&id={id}
- *   DELETE ?action=delete&id={id}
- */
+
 
 session_start();
 header('Content-Type: application/json');

@@ -1,25 +1,4 @@
 <?php
-/**
- * LearnFlow LMS — Theme Preview Bar
- *
- * Shows a floating confirmation bar when the admin is previewing a theme.
- * Include this in EVERY portal file (admin, instructor, student) so the
- * admin can see and confirm/cancel the preview from any portal.
- *
- * ════════════════════════════════════════════════════════════════
- * HOW TO INTEGRATE
- * ════════════════════════════════════════════════════════════════
- *
- * Add this single line right after the opening <body> tag in:
- *   - learnflow-admin.php
- *   - learnflow-instructor.php
- *   - learnflow-student.php
- *
- *   <?php require_once __DIR__ . '/theme-preview-bar.php'; ?>
- *
- * The bar only renders HTML if the current PHP session has an active
- * preview — so it is completely invisible for normal users.
- */
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
