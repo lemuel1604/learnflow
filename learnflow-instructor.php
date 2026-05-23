@@ -4178,8 +4178,7 @@ function saveSubmissionGrade(idx) {
   fd.append('submission_id', sub.id || 0);
   fd.append('score', val);
   fd.append('feedback', commentInput?.value.trim() || '');
-  fetc
-h(window.location.pathname, { method:'POST', body:fd })
+  fetch(window.location.pathname, { method:'POST', body:fd })
     .then(r => r.json())
     .then(data => {
       sub.grade   = val + '/100';
