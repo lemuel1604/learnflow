@@ -808,11 +808,28 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
             exit;
         }
 
-        $conn->query("DELETE FROM student_profiles WHERE user_id=$user_id");
-        $conn->query("DELETE FROM instructor_profiles WHERE user_id=$user_id");
-        $conn->query("DELETE FROM user_profiles WHERE user_id=$user_id");
-        $conn->query("DELETE FROM auth_tokens WHERE user_id=$user_id");
-        $conn->query("DELETE FROM users WHERE id=$user_id");
+        if ($roleCheck && isset($roleRow['role']) && $roleRow['role'] === 'instructor') {
+            // Remove any course sections owned by this instructor first, since course_sections.instructor_id has no ON DELETE CASCADE.
+            if ($conn->query("DELETE FROM course_sections WHERE instructor_id=$user_id") === false) {
+                echo json_encode(['success' => false, 'message' => 'Unable to delete instructor sections: ' . $conn->error]);
+                exit;
+            }
+        }
+
+        $queries = [
+            "DELETE FROM student_profiles WHERE user_id=$user_id",
+            "DELETE FROM instructor_profiles WHERE user_id=$user_id",
+            "DELETE FROM user_profiles WHERE user_id=$user_id",
+            "DELETE FROM auth_tokens WHERE user_id=$user_id",
+            "DELETE FROM users WHERE id=$user_id"
+        ];
+
+        foreach ($queries as $sql) {
+            if ($conn->query($sql) === false) {
+                echo json_encode(['success' => false, 'message' => 'Unable to delete user: ' . $conn->error]);
+                exit;
+            }
+        }
 
         if ($conn->affected_rows > 0) {
             echo json_encode(['success' => true, 'message' => 'User deleted successfully.']);
@@ -1921,7 +1938,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--primary);background:v
 .search-wrap{position:relative}
 .search-wrap input{width:100%;padding:9px 12px 9px 36px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px;transition:.2s}
 .search-wrap input:focus{border-color:var(--primary);outline:none;background:var(--surface)}
-.search-wrap::before{content:'🔍';position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none}
+.search-wrap::before{content:'';position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none}
 .mini-chart{display:flex;align-items:flex-end;gap:3px;height:50px}
 .mini-bar{flex:1;background:linear-gradient(180deg,var(--primary),rgba(124,58,237,.3));border-radius:3px 3px 0 0;min-width:10px;transition:.3s}
 .role-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700}
