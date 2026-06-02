@@ -76,10 +76,17 @@ $theme = $_COOKIE['theme'] ?? 'dark';
 
 // ===== LOAD CUSTOM THEME FROM DB =====
 $db_theme = null;
-try {
-    $th_stmt = $pdo->query("SELECT * FROM theme_settings WHERE id=1 LIMIT 1");
-    $db_theme = $th_stmt ? $th_stmt->fetch() : null;
-} catch(Exception $e) { $db_theme = null; }
+if (session_status() === PHP_SESSION_NONE) {
+    @session_start();
+}
+if (!empty($_SESSION['theme_preview']) && is_array($_SESSION['theme_preview'])) {
+    $db_theme = $_SESSION['theme_preview'];
+} else {
+    try {
+        $th_stmt = $pdo->query("SELECT * FROM theme_settings WHERE id=1 LIMIT 1");
+        $db_theme = $th_stmt ? $th_stmt->fetch() : null;
+    } catch(Exception $e) { $db_theme = null; }
+}
 
 // ===== BUILD JS-READY COURSE DATA FROM DB =====
 $js_courses       = [];
@@ -1401,43 +1408,50 @@ $js_rosters_json = json_encode($js_rosters, JSON_UNESCAPED_UNICODE);
 <style>
 :root {
   --primary: #CC3A72;
-  --primary-light: #FAE0EB;
-  --primary-dark: #a82860;
+  --primary-hsl: 336 67% 52%;
+  --primary-light: #FAF5F7;
+  --primary-dark: #9E1F47;
   --secondary: #4AAEE8;
-  --accent: #E09010;
-  --danger: #D84040;
-  --purple: #4AAEE8;
-  --bg: #FDF0F5;
+  --accent: #D4820A;
+  --danger: #EF4444;
+  --purple: #8B5CF6;
+  --bg: #F8FAFC;
   --surface: #FFFFFF;
-  --surface-2: #F8E4EF;
-  --border: #F0C0D8;
-  --text: #2a0e1c;
-  --text-2: #7a3a58;  
-  --text-3: #c090a8;
-  --shadow: 0 2px 12px rgba(204,58,114,0.10);
-  --shadow-md: 0 4px 24px rgba(204,58,114,0.18);
+  --surface-highlight: hsl(var(--primary-hsl) / .12);
+  --surface-highlight-2: hsl(var(--primary-hsl) / .08);
+  --surface-muted: hsl(var(--primary-hsl) / .05);
+  --border-highlight: hsl(var(--primary-hsl) / .16);
+  --surface-2: #F1F5F9;
+  --surface-3: #E2E8F0;
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --text: #0F172A;
+  --text-2: #475569;  
+  --text-3: #94A3B8;
+  --shadow: 0 2px 12px rgba(15,23,42,0.06);
+  --shadow-md: 0 4px 24px rgba(15,23,42,0.10);
   --radius: 12px;
   --radius-sm: 8px;
   --sidebar-w: 240px;
 }
 [data-theme="dark"] {
   --primary: #E8608A;
-  --primary-light: #2e1f2a;
-  --primary-dark: #c43f68;
+  --primary-light: #2D1923;
+  --primary-dark: #B83060;
   --secondary: #60B8E8;
-  --accent: #E8A84A;
-  --danger: #E06868;
-  --purple: #60B8E8;
-
-  --bg: #16161f;
-  --surface: #1f1f2e;
-  --surface-2: #272738;
-  --border: #343450;
-  --text: #eceaf6;
-  --text-2: #9e96bc;
-  --text-3: #565070;
-  --shadow: 0 2px 14px rgba(0,0,0,0.38);
-  --shadow-md: 0 4px 28px rgba(0,0,0,0.50);
+  --accent: #FBBF24;
+  --danger: #F87171;
+  --purple: #A78BFA;
+  --bg: #0A090B;
+  --surface: #121115;
+  --surface-2: #1E1D22;
+  --border: #232227;
+  --border-strong: #333238;
+  --text: #F4F4F5;
+  --text-2: #A1A1AA;
+  --text-3: #52525B;
+  --shadow: 0 2px 14px rgba(0,0,0,0.45);
+  --shadow-md: 0 4px 28px rgba(0,0,0,0.55);
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1446,8 +1460,8 @@ button{cursor:pointer;font-family:inherit;border:none;outline:none}
 input,textarea,select{font-family:inherit;outline:none}
 .app-shell{display:flex;min-height:100vh}
 .sidebar{
-  width:var(--sidebar-w);height:100vh;background:var(--surface);
-  border-right:1px solid var(--border);display:flex;flex-direction:column;
+  width:var(--sidebar-w);height:100vh;background:var(--surface-highlight);
+  border-right:1px solid var(--border-highlight);display:flex;flex-direction:column;
   position:fixed;left:0;top:0;z-index:100;transition:.3s;overflow:hidden;
 }
 #navMenu{flex:1;overflow-y:auto;overflow-x:hidden;}
@@ -1477,7 +1491,7 @@ input,textarea,select{font-family:inherit;outline:none}
 .user-name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-role{font-size:11px;color:var(--text-3)}
 .sidebar.collapsed .user-info{display:none}
-.topbar{height:60px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;position:sticky;top:0;z-index:50;}
+.topbar{height:60px;background:var(--surface-highlight);border-bottom:1px solid var(--border-highlight);display:flex;align-items:center;padding:0 20px;gap:12px;position:sticky;top:0;z-index:50;}
 .topbar-left{display:flex;align-items:center;gap:12px;flex:1}
 .topbar-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)}
 .topbar-right{display:flex;align-items:center;gap:8px}
@@ -1493,10 +1507,18 @@ input,textarea,select{font-family:inherit;outline:none}
 .breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3);margin-bottom:6px}
 .breadcrumb span:last-child{color:var(--text)}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.card{
+  background:hsl(var(--primary-hsl) / .08);
+  border:1px solid hsl(var(--primary-hsl) / .14);
+  border-radius:var(--radius);
+  padding:20px;
+  box-shadow:var(--shadow);
+}
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:24px}
 .stat-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  background:hsl(var(--primary-hsl) / .06);
+  border:1px solid hsl(var(--primary-hsl) / .14);
+  border-radius:var(--radius);
   padding:20px 20px 18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;
   transition:all .2s ease;cursor:pointer;position:relative;overflow:hidden;
 }
@@ -1607,7 +1629,7 @@ select:focus{border-color:var(--primary)}
 .toggle-slider::before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.3s;}
 .toggle input:checked + .toggle-slider{background:var(--primary)}
 .toggle input:checked + .toggle-slider::before{transform:translateX(20px)}
-.discussion-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:12px;cursor:pointer;transition:.2s;box-shadow:var(--shadow)}
+.discussion-card{background:hsl(var(--primary-hsl) / .08);border:1px solid hsl(var(--primary-hsl) / .14);border-radius:var(--radius);padding:18px;margin-bottom:12px;cursor:pointer;transition:.2s;box-shadow:var(--shadow)}
 .discussion-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);border-color:var(--primary)}
 .discussion-reply{background:var(--surface-2);border-radius:var(--radius-sm);padding:14px;margin-top:10px;border-left:3px solid var(--primary)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;display:none;align-items:center;justify-content:center;padding:20px}
@@ -1793,6 +1815,56 @@ select:focus{border-color:var(--primary)}
 
 </style>
 <?php if ($db_theme): ?>
+<?php
+if (!function_exists('php_hsl_parts')) {
+    function php_hsl_parts($hsl) {
+        if (preg_match('/([\d.]+)\s+([\d.]+)%\s+([\d.]+)%/', (string)$hsl, $m)) {
+            return [(float)$m[1], (float)$m[2], (float)$m[3]];
+        }
+        return [0, 0, 50];
+    }
+    function php_adjust_hsl($hsl, $s, $l) {
+        $parts = php_hsl_parts($hsl);
+        return "{$parts[0]} {$s}% {$l}%";
+    }
+    function php_shift_l($hsl, $delta) {
+        $parts = php_hsl_parts($hsl);
+        $newL = max(0, min(100, $parts[2] + $delta));
+        return "{$parts[0]} {$parts[1]}% {$newL}%";
+    }
+}
+$primary_hsl = $db_theme['primary_color'];
+$primary_parts = php_hsl_parts($primary_hsl);
+$hue = $primary_parts[0];
+
+if ($db_theme['is_dark']) {
+    $dk_p = $db_theme['primary_color'];
+    $dk_d = $db_theme['primary_dark'];
+    $dk_l = $db_theme['primary_light'];
+    $dk_bg = $db_theme['bg_color'];
+    $dk_sf = $db_theme['surface_color'];
+    $dk_sf2 = php_shift_l($db_theme['bg_color'], 4);
+    $dk_sf3 = php_shift_l($db_theme['bg_color'], 8);
+    $dk_bd = $db_theme['border_color'];
+    $dk_bd_st = php_shift_l($db_theme['border_color'], 8);
+    $dk_tx = $db_theme['text_color'];
+    $dk_tx2 = $db_theme['text_secondary'];
+    $dk_tx3 = php_shift_l($db_theme['text_secondary'], -15);
+} else {
+    $dk_p = php_adjust_hsl($primary_hsl, 80, 65);
+    $dk_d = php_adjust_hsl($primary_hsl, 80, 53);
+    $dk_l = php_adjust_hsl($primary_hsl, 30, 20);
+    $dk_bg = "{$hue} 12% 8%";
+    $dk_sf = "{$hue} 12% 12%";
+    $dk_sf2 = "{$hue} 12% 16%";
+    $dk_sf3 = "{$hue} 12% 20%";
+    $dk_bd = "{$hue} 12% 18%";
+    $dk_bd_st = "{$hue} 12% 25%";
+    $dk_tx = "{$hue} 8% 92%";
+    $dk_tx2 = "{$hue} 8% 70%";
+    $dk_tx3 = "{$hue} 8% 45%";
+}
+?>
 <style id="lf-theme-vars">
 :root {
   --primary: hsl(<?php echo htmlspecialchars($db_theme['primary_color']); ?>);
@@ -1800,11 +1872,29 @@ select:focus{border-color:var(--primary)}
   --primary-light: hsl(<?php echo htmlspecialchars($db_theme['primary_light']); ?>);
   --bg: hsl(<?php echo htmlspecialchars($db_theme['bg_color']); ?>);
   --surface: hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?>);
+  --surface-2: hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?> / 0.72);
   --border: hsl(<?php echo htmlspecialchars($db_theme['border_color']); ?>);
   --text: hsl(<?php echo htmlspecialchars($db_theme['text_color']); ?>);
   --text-2: hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?>);
+  --text-3: hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?> / 0.6);
   <?php if ($db_theme['accent_color']): ?>--secondary: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>); --accent: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>);<?php endif; ?>
   --primary-glow: hsla(<?php echo htmlspecialchars($db_theme['primary_color']); ?>, 0.12);
+}
+[data-theme="dark"] {
+  --primary: hsl(<?php echo htmlspecialchars($dk_p); ?>);
+  --primary-dark: hsl(<?php echo htmlspecialchars($dk_d); ?>);
+  --primary-light: hsl(<?php echo htmlspecialchars($dk_l); ?>);
+  --bg: hsl(<?php echo htmlspecialchars($dk_bg); ?>);
+  --surface: hsl(<?php echo htmlspecialchars($dk_sf); ?>);
+  --surface-2: hsl(<?php echo htmlspecialchars($dk_sf2); ?>);
+  --surface-3: hsl(<?php echo htmlspecialchars($dk_sf3); ?>);
+  --border: hsl(<?php echo htmlspecialchars($dk_bd); ?>);
+  --border-strong: hsl(<?php echo htmlspecialchars($dk_bd_st); ?>);
+  --text: hsl(<?php echo htmlspecialchars($dk_tx); ?>);
+  --text-2: hsl(<?php echo htmlspecialchars($dk_tx2); ?>);
+  --text-3: hsl(<?php echo htmlspecialchars($dk_tx3); ?>);
+  <?php if ($db_theme['accent_color']): ?>--secondary: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>); --accent: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>);<?php endif; ?>
+  --primary-glow: hsla(<?php echo htmlspecialchars($dk_p); ?>, 0.18);
 }
 </style>
 <?php endif; ?>
@@ -2095,12 +2185,47 @@ document.addEventListener("DOMContentLoaded", () => {
     const [h, s, l] = _hslParts(hsl);
     return `${h} ${s}% ${Math.max(0, Math.min(100, l + delta))}%`;
   }
+  function _adjustHSL(hsl, sOverride, lOverride) {
+    const [h, s, l] = _hslParts(hsl);
+    const finalS = sOverride !== null ? sOverride : s;
+    const finalL = lOverride !== null ? lOverride : l;
+    return `${h} ${finalS}% ${finalL}%`;
+  }
   function _darkVariants(t) {
+    // If the theme itself is natively dark, use its database variables directly
+    if (t.is_dark) {
+      return {
+        p: t.p,
+        d: t.d,
+        l: t.l,
+        bg: t.bg,
+        surface: t.surface,
+        surface2: t.surface2 || _shiftL(t.bg, +4),
+        surface3: t.surface3 || _shiftL(t.bg, +8),
+        border: t.border,
+        borderSt: t.borderSt || _shiftL(t.border, +8),
+        text: t.text,
+        text2: t.text2,
+        text3: t.text3 || _shiftL(t.text2, -15),
+        acc: t.acc,
+      };
+    }
+    // If the active theme is a light theme, dynamically generate a premium neutral slate/zinc dark mode using its hue!
+    const hue = _hslParts(t.p)[0];
     return {
-      p: _shiftL(t.p, +8), d: _shiftL(t.d, +6), l: _shiftL(t.p, -35),
-      bg: _shiftL(t.p, -47), surface: _shiftL(t.p, -43), surface2: _shiftL(t.p, -40),
-      surface3: _shiftL(t.p, -37), border: _shiftL(t.p, -30), borderSt: _shiftL(t.p, -25),
-      text: _shiftL(t.p, +48), text2: _shiftL(t.p, +20), text3: _shiftL(t.p, -15), acc: t.acc,
+      p: _adjustHSL(t.p, 80, 65),
+      d: _adjustHSL(t.p, 80, 53),
+      l: _adjustHSL(t.p, 30, 20),
+      bg: `${hue} 12% 8%`,
+      surface: `${hue} 12% 12%`,
+      surface2: `${hue} 12% 16%`,
+      surface3: `${hue} 12% 20%`,
+      border: `${hue} 12% 18%`,
+      borderSt: `${hue} 12% 25%`,
+      text: `${hue} 8% 92%`,
+      text2: `${hue} 8% 70%`,
+      text3: `${hue} 8% 45%`,
+      acc: t.acc,
     };
   }
   function _applyThemeVars(t) {
@@ -2115,13 +2240,12 @@ document.addEventListener("DOMContentLoaded", () => {
   --primary-light:hsl(${t.l});
   --bg:           hsl(${t.bg});
   --surface:      hsl(${surf});
-  --surface-2:    hsl(${_shiftL(t.bg, -3)});
-  --surface-3:    hsl(${_shiftL(t.bg, -6)});
+  --surface-2:    hsl(${surf} / 0.72);
   --border:       hsl(${t.border});
   --border-strong:hsl(${_shiftL(t.border, -8)});
   --text:         hsl(${t.text});
   --text-2:       hsl(${t.text2});
-  --text-3:       hsl(${_shiftL(t.text2, +20)});
+  --text-3:       hsl(${t.text2} / 0.6);
   --secondary:    hsl(${t.acc});
   --primary-glow: hsla(${t.p}, 0.12);
 }
@@ -2136,8 +2260,8 @@ document.addEventListener("DOMContentLoaded", () => {
   --border:       hsl(${dk.border});
   --border-strong:hsl(${dk.borderSt});
   --text:         hsl(${dk.text});
-  --text-2:       hsl(${dk.text2});
-  --text-3:       hsl(${dk.text3});
+  --text-2:         hsl(${dk.text2});
+  --text-3:         hsl(${dk.text3});
   --secondary:    hsl(${dk.acc});
   --primary-glow: hsla(${dk.p}, 0.18);
 }`;

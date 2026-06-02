@@ -104,12 +104,12 @@ function get_default_theme(): array {
         'name'           => 'Rose Pink',
         'primary_color'  => '336 67% 52%',
         'primary_dark'   => '336 67% 40%',
-        'primary_light'  => '336 100% 97%',
-        'bg_color'       => '336 100% 97%',
+        'primary_light'  => '336 20% 97%',
+        'bg_color'       => '336 12% 98%',
         'surface_color'  => '0 0% 100%',
-        'border_color'   => '336 60% 87%',
-        'text_color'     => '336 60% 10%',
-        'text_secondary' => '336 40% 47%',
+        'border_color'   => '336 12% 92%',
+        'text_color'     => '336 20% 10%',
+        'text_secondary' => '336 12% 44%',
         'accent_color'   => '207 80% 60%',
         'is_dark'        => 0,
     ];
@@ -128,20 +128,31 @@ function get_theme_css(?mysqli $conn = null): string {
 
     $p   = htmlspecialchars($t['primary_color']);
     $pd  = htmlspecialchars($t['primary_dark']);
-    $pl  = htmlspecialchars($t['primary_light'] ?? '336 100% 97%');
+    $pl  = htmlspecialchars($t['primary_light'] ?? '336 20% 97%');
     $bg  = htmlspecialchars($t['bg_color']);
     $sf  = htmlspecialchars($t['surface_color']);
     $bd  = htmlspecialchars($t['border_color']);
     $tx  = htmlspecialchars($t['text_color']);
-    $tx2 = htmlspecialchars($t['text_secondary'] ?? '336 40% 47%');
+    $tx2 = htmlspecialchars($t['text_secondary'] ?? '336 12% 44%');
     $ac  = htmlspecialchars($t['accent_color'] ?? '207 80% 60%');
 
     /* Compute dark-mode complementary values automatically */
-    $darkBg      = $t['is_dark'] ? $bg  : '230 15% 10%';
-    $darkSurface = $t['is_dark'] ? $sf  : '230 15% 14%';
-    $darkBorder  = $t['is_dark'] ? $bd  : '230 15% 22%';
-    $darkText    = $t['is_dark'] ? $tx  : '230 20% 90%';
-    $darkText2   = $t['is_dark'] ? $tx2 : '230 15% 65%';
+    if ($t['is_dark']) {
+        $darkBg      = $bg;
+        $darkSurface = $sf;
+        $darkBorder  = $bd;
+        $darkText    = $tx;
+        $darkText2   = $tx2;
+    } else {
+        $primaryParts = explode(' ', trim($t['primary_color']));
+        $hue = count($primaryParts) > 0 ? (int)$primaryParts[0] : 230;
+
+        $darkBg      = "{$hue} 12% 8%";
+        $darkSurface = "{$hue} 12% 12%";
+        $darkBorder  = "{$hue} 12% 18%";
+        $darkText    = "{$hue} 8% 92%";
+        $darkText2   = "{$hue} 8% 70%";
+    }
 
     return <<<CSS
 <style id="lf-theme">
@@ -200,15 +211,15 @@ function get_theme_presets(): array {
             'description'    => 'The original LearnFlow brand — warm and welcoming',
             'primary_color'  => '336 67% 52%',
             'primary_dark'   => '336 67% 40%',
-            'primary_light'  => '336 100% 97%',
-            'bg_color'       => '336 100% 97%',
+            'primary_light'  => '336 20% 97%',
+            'bg_color'       => '336 12% 98%',
             'surface_color'  => '0 0% 100%',
-            'border_color'   => '336 60% 87%',
-            'text_color'     => '336 60% 10%',
-            'text_secondary' => '336 40% 47%',
+            'border_color'   => '336 12% 92%',
+            'text_color'     => '336 20% 10%',
+            'text_secondary' => '336 12% 44%',
             'accent_color'   => '207 80% 60%',
             'is_dark'        => 0,
-            'preview'        => ['#CC3A72', '#FDF0F5', '#FFFFFF', '#4AAEE8'],
+            'preview'        => ['#CC3A72', '#FAF9FA', '#FFFFFF', '#4AAEE8'],
         ],
         [
             'id'             => 'ocean-blue',
@@ -216,15 +227,15 @@ function get_theme_presets(): array {
             'description'    => 'Deep ocean blue — professional and calm',
             'primary_color'  => '211 84% 52%',
             'primary_dark'   => '211 84% 40%',
-            'primary_light'  => '211 100% 97%',
-            'bg_color'       => '211 100% 97%',
+            'primary_light'  => '211 20% 97%',
+            'bg_color'       => '211 12% 98%',
             'surface_color'  => '0 0% 100%',
-            'border_color'   => '211 60% 87%',
-            'text_color'     => '211 60% 10%',
-            'text_secondary' => '211 40% 47%',
+            'border_color'   => '211 12% 92%',
+            'text_color'     => '211 25% 10%',
+            'text_secondary' => '211 12% 44%',
             'accent_color'   => '158 64% 52%',
             'is_dark'        => 0,
-            'preview'        => ['#1A6FBF', '#F0F6FF', '#FFFFFF', '#2FC68A'],
+            'preview'        => ['#1A6FBF', '#F8FAFC', '#FFFFFF', '#2FC68A'],
         ],
         [
             'id'             => 'forest-green',
@@ -232,15 +243,15 @@ function get_theme_presets(): array {
             'description'    => 'Natural forest green — fresh and focused',
             'primary_color'  => '145 63% 42%',
             'primary_dark'   => '145 63% 30%',
-            'primary_light'  => '145 60% 97%',
-            'bg_color'       => '145 60% 97%',
+            'primary_light'  => '145 20% 97%',
+            'bg_color'       => '145 10% 98%',
             'surface_color'  => '0 0% 100%',
-            'border_color'   => '145 40% 85%',
-            'text_color'     => '145 40% 10%',
-            'text_secondary' => '145 30% 47%',
+            'border_color'   => '145 10% 92%',
+            'text_color'     => '145 25% 10%',
+            'text_secondary' => '145 12% 44%',
             'accent_color'   => '45 90% 58%',
             'is_dark'        => 0,
-            'preview'        => ['#299453', '#F0FBF4', '#FFFFFF', '#F0B429'],
+            'preview'        => ['#299453', '#F7FAF8', '#FFFFFF', '#F0B429'],
         ],
         [
             'id'             => 'royal-purple',
@@ -248,15 +259,15 @@ function get_theme_presets(): array {
             'description'    => 'Rich royal purple — elegant and prestigious',
             'primary_color'  => '262 80% 58%',
             'primary_dark'   => '262 80% 46%',
-            'primary_light'  => '262 80% 97%',
-            'bg_color'       => '262 80% 97%',
+            'primary_light'  => '262 20% 97%',
+            'bg_color'       => '262 10% 98%',
             'surface_color'  => '0 0% 100%',
-            'border_color'   => '262 50% 88%',
-            'text_color'     => '262 50% 12%',
-            'text_secondary' => '262 40% 47%',
+            'border_color'   => '262 10% 92%',
+            'text_color'     => '262 25% 10%',
+            'text_secondary' => '262 12% 44%',
             'accent_color'   => '335 80% 58%',
             'is_dark'        => 0,
-            'preview'        => ['#7C3AED', '#F6F0FF', '#FFFFFF', '#E8608A'],
+            'preview'        => ['#7C3AED', '#FAF8FC', '#FFFFFF', '#E8608A'],
         ],
         [
             'id'             => 'sunset-orange',
@@ -264,15 +275,15 @@ function get_theme_presets(): array {
             'description'    => 'Warm sunset orange — energetic and inspiring',
             'primary_color'  => '24 95% 53%',
             'primary_dark'   => '24 95% 41%',
-            'primary_light'  => '24 100% 97%',
-            'bg_color'       => '24 100% 97%',
+            'primary_light'  => '24 20% 97%',
+            'bg_color'       => '24 10% 98%',
             'surface_color'  => '0 0% 100%',
-            'border_color'   => '24 60% 87%',
-            'text_color'     => '24 60% 10%',
-            'text_secondary' => '24 40% 47%',
+            'border_color'   => '24 10% 92%',
+            'text_color'     => '24 25% 10%',
+            'text_secondary' => '24 12% 44%',
             'accent_color'   => '211 84% 52%',
             'is_dark'        => 0,
-            'preview'        => ['#F25C19', '#FFF5F0', '#FFFFFF', '#1A6FBF'],
+            'preview'        => ['#F25C19', '#FAF8F5', '#FFFFFF', '#1A6FBF'],
         ],
         [
             'id'             => 'crimson-red',
@@ -280,15 +291,15 @@ function get_theme_presets(): array {
             'description'    => 'Bold crimson — confident and assertive',
             'primary_color'  => '0 72% 51%',
             'primary_dark'   => '0 72% 39%',
-            'primary_light'  => '0 100% 97%',
-            'bg_color'       => '0 100% 97%',
+            'primary_light'  => '0 20% 97%',
+            'bg_color'       => '0 8% 98%',
             'surface_color'  => '0 0% 100%',
-            'border_color'   => '0 60% 87%',
-            'text_color'     => '0 60% 10%',
-            'text_secondary' => '0 40% 47%',
+            'border_color'   => '0 8% 92%',
+            'text_color'     => '0 20% 10%',
+            'text_secondary' => '0 12% 44%',
             'accent_color'   => '196 80% 55%',
             'is_dark'        => 0,
-            'preview'        => ['#DC2626', '#FFF5F5', '#FFFFFF', '#22D3EE'],
+            'preview'        => ['#DC2626', '#FAF5F5', '#FFFFFF', '#22D3EE'],
         ],
         [
             'id'             => 'midnight-dark',
@@ -296,15 +307,15 @@ function get_theme_presets(): array {
             'description'    => 'Deep dark theme — elegant and easy on the eyes',
             'primary_color'  => '336 80% 65%',
             'primary_dark'   => '336 80% 53%',
-            'primary_light'  => '336 80% 20%',
-            'bg_color'       => '230 15% 10%',
-            'surface_color'  => '230 15% 14%',
-            'border_color'   => '230 15% 22%',
-            'text_color'     => '230 20% 90%',
-            'text_secondary' => '230 15% 65%',
+            'primary_light'  => '336 30% 20%',
+            'bg_color'       => '230 15% 8%',
+            'surface_color'  => '230 15% 12%',
+            'border_color'   => '230 12% 18%',
+            'text_color'     => '230 20% 92%',
+            'text_secondary' => '230 12% 68%',
             'accent_color'   => '207 80% 65%',
             'is_dark'        => 1,
-            'preview'        => ['#E8608A', '#16161F', '#1F1F2E', '#4AAEE8'],
+            'preview'        => ['#E8608A', '#101216', '#16191E', '#4AAEE8'],
         ],
         [
             'id'             => 'slate-dark',
@@ -312,15 +323,15 @@ function get_theme_presets(): array {
             'description'    => 'Cool slate dark — modern and minimal',
             'primary_color'  => '211 84% 62%',
             'primary_dark'   => '211 84% 50%',
-            'primary_light'  => '211 84% 20%',
-            'bg_color'       => '215 20% 10%',
-            'surface_color'  => '215 20% 14%',
-            'border_color'   => '215 20% 22%',
-            'text_color'     => '215 25% 90%',
-            'text_secondary' => '215 20% 65%',
+            'primary_light'  => '211 30% 20%',
+            'bg_color'       => '215 20% 8%',
+            'surface_color'  => '215 20% 12%',
+            'border_color'   => '215 15% 18%',
+            'text_color'     => '215 25% 92%',
+            'text_secondary' => '215 15% 68%',
             'accent_color'   => '145 63% 52%',
             'is_dark'        => 1,
-            'preview'        => ['#3B82F6', '#0F1923', '#1A2535', '#22C55E'],
+            'preview'        => ['#3B82F6', '#0F1219', '#151B26', '#22C55E'],
         ],
         [
             'id'             => 'emerald-dark',
@@ -328,15 +339,15 @@ function get_theme_presets(): array {
             'description'    => 'Rich emerald dark — vibrant and sophisticated',
             'primary_color'  => '145 63% 48%',
             'primary_dark'   => '145 63% 36%',
-            'primary_light'  => '145 63% 18%',
-            'bg_color'       => '160 20% 8%',
-            'surface_color'  => '160 20% 12%',
-            'border_color'   => '160 20% 20%',
-            'text_color'     => '160 25% 90%',
-            'text_secondary' => '160 15% 65%',
+            'primary_light'  => '145 30% 20%',
+            'bg_color'       => '160 20% 7%',
+            'surface_color'  => '160 20% 11%',
+            'border_color'   => '160 15% 17%',
+            'text_color'     => '160 25% 92%',
+            'text_secondary' => '160 15% 68%',
             'accent_color'   => '45 90% 58%',
             'is_dark'        => 1,
-            'preview'        => ['#22C55E', '#0B1410', '#111E18', '#FACC15'],
+            'preview'        => ['#22C55E', '#0B0F0D', '#101713', '#FACC15'],
         ],
     ];
 }
