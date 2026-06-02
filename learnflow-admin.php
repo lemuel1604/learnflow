@@ -3,7 +3,14 @@ ob_start();
 session_start();
 
 // ===== AUTH GUARD =====
-if (!isset($_SESSION['user']) || $_SESSION['role'] !== 'admin') {
+// Support multiple session layouts: role stored as $_SESSION['role'],
+// $_SESSION['user_role'], or nested inside $_SESSION['user']['role'].
+$_session_role = $_SESSION['role']
+    ?? $_SESSION['user_role']
+    ?? (is_array($_SESSION['user'] ?? null) ? ($_SESSION['user']['role'] ?? '') : '')
+    ?? '';
+
+if (!isset($_SESSION['user']) || $_session_role !== 'admin') {
     header('Location: learnflow-login.php');
     exit;
 }
@@ -17,7 +24,8 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
     header('Content-Type: application/json');
 
     $action   = $_POST['action'] ?? $_GET['action'] ?? '';
-    $admin_id = (int)($_SESSION['user_id'] ?? 0);
+    $_ajax_sess_user = is_array($_SESSION['user'] ?? null) ? $_SESSION['user'] : [];
+    $admin_id = (int)($_ajax_sess_user['id'] ?? $_SESSION['user_id'] ?? 0);
 
     // ── ADMIN DASHBOARD / ANALYTICS / NOTIFICATIONS (DB-backed) ─────────────
     // These are used by the admin frontend to replace the current hardcoded/demo UI.
@@ -1571,6 +1579,9 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
 
     // ── SAVE THEME ────────────────────────────────────────────
     if ($action === 'save_theme') {
+        // Ensure gradient column exists (added after initial schema; idempotent)
+        $conn->query("ALTER TABLE theme_settings ADD COLUMN IF NOT EXISTS gradient TEXT DEFAULT NULL");
+
         $name           = $conn->real_escape_string(trim($_POST['name']          ?? 'Custom'));
         $primary_color  = $conn->real_escape_string(trim($_POST['primary_color'] ?? '336 67% 52%'));
         $primary_dark   = $conn->real_escape_string(trim($_POST['primary_dark']  ?? '336 67% 40%'));
@@ -1582,17 +1593,20 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
         $text_secondary = $conn->real_escape_string(trim($_POST['text_secondary']?? '336 40% 47%'));
         $accent_color   = $conn->real_escape_string(trim($_POST['accent_color']  ?? '207 80% 60%'));
         $is_dark        = (int)($_POST['is_dark'] ?? 0);
+        // Gradient: CSS linear-gradient() string for gradient presets, empty/NULL for solid ones
+        $gradient_raw   = trim($_POST['gradient'] ?? '');
+        $gradient_val   = $gradient_raw !== '' ? "'" . $conn->real_escape_string($gradient_raw) . "'" : 'NULL';
 
         $ok = $conn->query("
             INSERT INTO theme_settings (id,name,primary_color,primary_dark,primary_light,
-                bg_color,surface_color,border_color,text_color,text_secondary,accent_color,is_dark)
+                bg_color,surface_color,border_color,text_color,text_secondary,accent_color,is_dark,gradient)
             VALUES (1,'$name','$primary_color','$primary_dark','$primary_light',
-                '$bg_color','$surface_color','$border_color','$text_color','$text_secondary','$accent_color',$is_dark)
+                '$bg_color','$surface_color','$border_color','$text_color','$text_secondary','$accent_color',$is_dark,$gradient_val)
             ON DUPLICATE KEY UPDATE
                 name='$name',primary_color='$primary_color',primary_dark='$primary_dark',
                 primary_light='$primary_light',bg_color='$bg_color',surface_color='$surface_color',
                 border_color='$border_color',text_color='$text_color',text_secondary='$text_secondary',
-                accent_color='$accent_color',is_dark=$is_dark
+                accent_color='$accent_color',is_dark=$is_dark,gradient=$gradient_val
         ");
         ob_clean();
         echo json_encode(['success' => (bool)$ok, 'message' => $ok ? 'Theme saved.' : $conn->error]);
@@ -1604,17 +1618,25 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQ
 }
 
 // ===== SESSION DATA =====
-$admin_name = $_SESSION['user'] ?? 'System Administrator';
-$admin_email = $_SESSION['email'] ?? 'admin@learnflow.edu';
+// Support both flat session layouts (role/email at root) and nested ($_SESSION['user'] is an array)
+$_sess_user  = is_array($_SESSION['user'] ?? null) ? $_SESSION['user'] : [];
+$admin_name  = $_sess_user['name']
+    ?? $_sess_user['display_name']
+    ?? (trim(($_sess_user['first_name'] ?? '') . ' ' . ($_sess_user['last_name'] ?? '')) ?: null)
+    ?? (is_string($_SESSION['user'] ?? null) ? $_SESSION['user'] : null)
+    ?? $_SESSION['name']
+    ?? $_SESSION['display_name']
+    ?? 'System Administrator';
+$admin_email = $_sess_user['email']
+    ?? $_SESSION['email']
+    ?? 'admin@learnflow.edu';
 $admin_initials = strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $admin_name))));
 $admin_initials = substr($admin_initials, 0, 2);
 $theme = $_COOKIE['theme'] ?? 'dark';
 
 // ===== LOAD CUSTOM THEME FROM DB =====
 $db_theme = null;
-if (session_status() === PHP_SESSION_NONE) {
-    @session_start();
-}
+// Note: session_start() was already called at the top of this file.
 if (!empty($_SESSION['theme_preview']) && is_array($_SESSION['theme_preview'])) {
     $db_theme = $_SESSION['theme_preview'];
 } else {
@@ -1622,9 +1644,29 @@ if (!empty($_SESSION['theme_preview']) && is_array($_SESSION['theme_preview'])) 
     if ($db_theme_res) $db_theme = $db_theme_res->fetch_assoc();
 }
 
+// ── Bug fix: always fall back to Rose Pink defaults so the CSS block is never
+//    skipped (which would leave every --primary / --bg / --text variable undefined
+//    and render the page as an unstyled blank).
+if (!$db_theme) {
+    $db_theme = [
+        'id'             => 1,
+        'name'           => 'Rose Pink',
+        'primary_color'  => '336 67% 52%',
+        'primary_dark'   => '336 67% 40%',
+        'primary_light'  => '336 20% 97%',
+        'bg_color'       => '336 12% 98%',
+        'surface_color'  => '0 0% 100%',
+        'border_color'   => '336 12% 92%',
+        'text_color'     => '336 20% 10%',
+        'text_secondary' => '336 12% 44%',
+        'accent_color'   => '207 80% 60%',
+        'is_dark'        => 0,
+    ];
+}
+
 // Load admin avatar from DB
 $admin_avatar_url = '';
-$admin_user_id = (int)($_SESSION['user_id'] ?? 0);
+$admin_user_id = (int)($_sess_user['id'] ?? $_SESSION['user_id'] ?? 0);
 if ($admin_user_id) {
     $avatarRes = $conn->query("SELECT avatar_url FROM user_profiles WHERE user_id = {$admin_user_id} LIMIT 1");
     if ($avatarRes && $avatarRow = $avatarRes->fetch_assoc()) {
@@ -1650,30 +1692,34 @@ if ($admin_user_id) {
   --success: #10B981;
   --warning: #F59E0B;
   --info: #3B82F6;
-  /* ── Default theme fallbacks (overridden by lf-theme-vars above when DB theme loaded) ── */
+  /* ── Solid Theme Overrides ── */
+  --bg: #FFFFFF;
+  --text-on-primary: #FFFFFF;
+  /* ── Default theme fallbacks ── */
   --primary: #CC3A72;
   --primary-hsl: 336 67% 52%;
   --primary-light: #FAF5F7;
   --primary-dark: #9E1F47;
   --secondary: #4AAEE8;
-  --bg: #F8FAFC;
-  --primary-glow: rgba(204,58,114,0.08);
-  --surface: #FFFFFF;
-  --surface-highlight: hsl(var(--primary-hsl) / .12);
-  --surface-highlight-2: hsl(var(--primary-hsl) / .08);
-  --surface-muted: hsl(var(--primary-hsl) / .05);
-  --border-highlight: hsl(var(--primary-hsl) / .16);
-  --surface-2: #F1F5F9;
-  --surface-3: #E2E8F0;
+  --primary-glow: rgba(204,58,114,0.12);
+  /* ── Surface = neutral white (NOT the primary colour) ── */
+  --surface:   #FFFFFF;
+  --surface-2: #F8F9FA;
+  --surface-3: #F1F3F5;
+  /* ── Border = subtle neutral, legible on both white and coloured bg ── */
   --border: #E2E8F0;
   --border-strong: #CBD5E1;
-  --text: #0F172A;
+  /* ── Sidebar / topbar coloured strip use --primary-surface ── */
+  --primary-surface: var(--primary);
+  /* ── Text ── */
+  --text: #0F172A;        /* body text on white */
+  --text-inverse: #FFFFFF; /* text on solid primary bg */
   --text-2: #475569;
   --text-3: #94A3B8;
-  /* ── Layout / shadow / radius (never themed) ── */
-  --shadow: 0 2px 12px rgba(15,23,42,0.06);
-  --shadow-md: 0 4px 24px rgba(15,23,42,0.10);
-  --shadow-lg: 0 8px 40px rgba(15,23,42,0.15);
+  /* ── Layout / shadow / radius ── */
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 24px rgba(0,0,0,0.12);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.18);
   --radius: 14px;
   --radius-sm: 9px;
   --radius-xs: 6px;
@@ -1681,26 +1727,16 @@ if ($admin_user_id) {
   --topbar-h: 62px;
 }
 [data-theme="dark"] {
-  /* ── Dark-mode fallbacks (overridden by lf-theme-vars when dynamic theme active) ── */
-  --primary: #E8608A;
-  --primary-light: #2D1923;
-  --primary-dark: #B83060;
-  --secondary: #60B8E8;
-  --bg: #0A090B;
-  --surface: #121115;
-  --surface-2: #1E1D22;
-  --surface-3: #2A292F;
-  --border: #232227;
-  --border-strong: #333238;
-  --text: #F4F4F5;
-  --text-2: #A1A1AA;
-  --text-3: #52525B;
-  --primary-glow: rgba(224,90,136,0.15);
-  /* ── Fixed semantic colours in dark mode ── */
-  --danger: #F87171;
-  --success: #34D399;
-  --warning: #FBBF24;
-  --info: #60A5FA;
+  --bg: #0F1117;
+  --surface:   #1A1D27;
+  --surface-2: #222533;
+  --surface-3: #2A2E3E;
+  --border: #2E3347;
+  --border-strong: #3D4460;
+  --text: #F1F5F9;
+  --text-2: #94A3B8;
+  --text-3: #64748B;
+  --text-inverse: #FFFFFF;
   --shadow: 0 2px 14px rgba(0,0,0,0.45);
   --shadow-md: 0 4px 28px rgba(0,0,0,0.55);
   --shadow-lg: 0 8px 48px rgba(0,0,0,0.65);
@@ -1717,54 +1753,54 @@ a{text-decoration:none;color:inherit}
 
 /* ===== SIDEBAR ===== */
 .sidebar{
-  width:var(--sidebar-w);height:100vh;background:var(--surface-highlight);
-  border-right:1px solid var(--border-highlight);display:flex;flex-direction:column;
+  width:var(--sidebar-w);height:100vh;background:var(--primary);
+  border-right:1px solid rgba(255,255,255,0.12);display:flex;flex-direction:column;
   position:fixed;left:0;top:0;z-index:100;transition:.3s cubic-bezier(.4,0,.2,1);
-  overflow:hidden;
+  overflow:hidden;color:var(--text-inverse);
 }
 #navMenu{flex:1;overflow-y:auto;overflow-x:hidden;}
 .sidebar.collapsed{width:64px}
 .sidebar-header{
   flex-shrink:0;padding:20px 16px 16px;display:flex;align-items:center;gap:11px;
-  border-bottom:1px solid var(--border);
+  border-bottom:1px solid rgba(255,255,255,0.15);
 }
-.sidebar-brand{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;white-space:nowrap;overflow:hidden;transition:.3s;letter-spacing:-.3px}
+.sidebar-brand{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;white-space:nowrap;overflow:hidden;transition:.3s;letter-spacing:-.3px;color:var(--text-inverse)}
 .sidebar.collapsed .sidebar-brand,.sidebar.collapsed .nav-label,.sidebar.collapsed .nav-section-label{opacity:0;width:0;overflow:hidden}
 .sidebar.collapsed .sidebar-brand{display:none}
-.nav-section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-3);padding:14px 18px 4px;white-space:nowrap;transition:.3s}
+.nav-section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,0.6);padding:14px 18px 4px;white-space:nowrap;transition:.3s}
 .nav-item{
   display:flex;align-items:center;gap:12px;padding:9px 14px;cursor:pointer;
-  transition:all .15s ease;color:var(--text-2);position:relative;margin:1px 10px;
+  transition:all .15s ease;color:rgba(255,255,255,0.8);position:relative;margin:1px 10px;
   border-radius:var(--radius-sm);white-space:nowrap;
 }
-.nav-item:hover{background:var(--surface-2);color:var(--text)}
-.nav-item.active{background:var(--primary-glow);color:var(--primary);font-weight:600}
-.nav-item.active::before{content:'';position:absolute;left:-10px;top:50%;transform:translateY(-50%);width:3px;height:56%;background:var(--primary);border-radius:0 3px 3px 0}
+.nav-item:hover{background:rgba(255,255,255,0.1);color:var(--text-inverse)}
+.nav-item.active{background:rgba(255,255,255,0.2);color:var(--text-inverse);font-weight:600}
+.nav-item.active::before{content:'';position:absolute;left:-10px;top:50%;transform:translateY(-50%);width:3px;height:56%;background:var(--text-inverse);border-radius:0 3px 3px 0}
 .nav-icon{font-size:16px;flex-shrink:0;width:20px;text-align:center;opacity:.85}
 .nav-item.active .nav-icon{opacity:1}
 .nav-label{font-size:13px;font-weight:500;transition:.3s}
 .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;min-width:20px;text-align:center}
 .nav-badge.success{background:var(--success)}
-.sidebar-footer{flex-shrink:0;padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.sidebar-footer{flex-shrink:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px}
 .sidebar-footer .user-card{flex:1;min-width:0;padding:4px 2px}
-.sidebar-footer .logout-btn{flex-shrink:0;width:32px;height:32px;border-radius:var(--radius-sm);background:rgba(216,64,64,0.09);color:var(--danger);border:1.5px solid rgba(216,64,64,0.18);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
-.sidebar-footer .logout-btn:hover{background:rgba(216,64,64,0.18)}
+.sidebar-footer .logout-btn{flex-shrink:0;width:32px;height:32px;border-radius:var(--radius-sm);background:rgba(255,255,255,0.1);color:var(--text-inverse);border:1.5px solid rgba(255,255,255,0.2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
+.sidebar-footer .logout-btn:hover{background:rgba(255,255,255,0.2)}
 .user-card{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:var(--radius-sm);cursor:pointer;transition:.15s}
-.user-card:hover{background:var(--surface-2)}
-.user-avatar{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;flex-shrink:0;letter-spacing:.5px}
+.user-card:hover{background:rgba(255,255,255,0.1)}
+.user-avatar{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;color:var(--text-inverse);font-weight:700;font-size:12px;flex-shrink:0;letter-spacing:.5px}
 .user-info{overflow:hidden}
-.user-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.user-role{font-size:11px;color:var(--text-3)}
+.user-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-inverse)}
+.user-role{font-size:11px;color:rgba(255,255,255,0.6)}
 .sidebar.collapsed .user-info{display:none}
 
 /* ===== TOPBAR ===== */
-.topbar{height:var(--topbar-h);background:var(--surface-highlight);border-bottom:1px solid var(--border-highlight);display:flex;align-items:center;padding:0 22px;gap:12px;position:sticky;top:0;z-index:50}
+.topbar{height:var(--topbar-h);background:var(--primary);border-bottom:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;padding:0 22px;gap:12px;position:sticky;top:0;z-index:50;color:var(--text-inverse)}
 .topbar-left{display:flex;align-items:center;gap:12px;flex:1}
-.topbar-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text);letter-spacing:-.2px}
+.topbar-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text-inverse);letter-spacing:-.2px}
 .topbar-right{display:flex;align-items:center;gap:6px}
-.icon-btn{width:36px;height:36px;border-radius:var(--radius-sm);background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;border:1px solid var(--border);transition:all .2s ease;color:var(--text-2);position:relative}
-.icon-btn:hover{background:var(--primary-light);color:var(--primary);border-color:var(--border-strong);transform:translateY(-1px);box-shadow:var(--shadow)}
-.notif-dot{position:absolute;top:5px;right:5px;min-width:16px;height:16px;border-radius:8px;background:var(--danger);border:1.5px solid var(--surface);display:none;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;padding:0 3px;line-height:1}
+.icon-btn{width:36px;height:36px;border-radius:var(--radius-sm);background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;border:1px solid rgba(255,255,255,0.2);transition:all .2s ease;color:var(--text-inverse);position:relative}
+.icon-btn:hover{background:rgba(255,255,255,0.2);color:var(--text-inverse);transform:translateY(-1px);box-shadow:var(--shadow)}
+.notif-dot{position:absolute;top:5px;right:5px;min-width:16px;height:16px;border-radius:8px;background:var(--danger);border:1.5px solid var(--primary);display:none;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;padding:0 3px;line-height:1}
 
 /* ===== MAIN CONTENT ===== */
 .main-content{margin-left:var(--sidebar-w);flex:1;transition:.3s;min-height:100vh;display:flex;flex-direction:column}
@@ -1780,24 +1816,30 @@ a{text-decoration:none;color:inherit}
 
 /* ===== CARDS ===== */
 .card{
-  background:hsl(var(--primary-hsl) / .08);
-  border:1px solid hsl(var(--primary-hsl) / .14);
+  background:var(--surface);
+  border:1px solid var(--border);
   border-radius:var(--radius);
   padding:20px;
   box-shadow:var(--shadow);
+  color:var(--text);
 }
+.card h1, .card h2, .card h3, .card h4 { color: var(--text); }
+.card p { color: var(--text-2); }
 
 /* ===== STATS ===== */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px}
 .stat-card{
-  background:hsl(var(--primary-hsl) / .06);
-  border:1px solid hsl(var(--primary-hsl) / .14);
+  background:var(--primary);
+  border:1px solid rgba(255,255,255,0.15);
   border-radius:var(--radius);
   padding:20px;box-shadow:var(--shadow);display:flex;align-items:center;gap:16px;
   transition:all .2s ease;cursor:pointer;position:relative;overflow:hidden;
+  color:var(--text-inverse);
 }
-.stat-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--stat-color,var(--primary)),transparent);opacity:.5}
 .stat-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+.stat-card .stat-label { color: rgba(255,255,255,0.75) !important; }
+.stat-card .stat-value { color: var(--text-inverse) !important; }
+.stat-card .stat-icon { color: var(--text-inverse) !important; background: rgba(255,255,255,0.18) !important; }
 .stat-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
 .stat-val{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;line-height:1}
 .stat-label{font-size:12px;color:var(--text-2);margin-top:3px}
@@ -1816,7 +1858,7 @@ table{width:100%;border-collapse:collapse}
 th{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
 td{padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text)}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:var(--surface-2)}
+tr:hover td{background:var(--surface-2);color:var(--text)}
 .avatar-sm{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700}
 
 /* ===== BADGES ===== */
@@ -1854,16 +1896,16 @@ tr:hover td{background:var(--surface-2)}
 .form-label{display:block;font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
 .input-wrap{position:relative}
 .input-wrap .icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:16px;pointer-events:none}
-.input-wrap input,.input-wrap select{width:100%;padding:10px 13px 10px 38px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px;transition:.2s}
+.input-wrap input,.input-wrap select{width:100%;padding:10px 13px 10px 38px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;transition:.2s}
 .input-wrap input:focus,.input-wrap select:focus{border-color:var(--primary);background:var(--surface)}
 input[type="text"]:not(.input-wrap input),
 input[type="email"]:not(.input-wrap input),
 input[type="password"]:not(.input-wrap input),
 input[type="number"]:not(.input-wrap input),
 select:not(.input-wrap select),
-textarea{width:100%;padding:10px 13px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px;transition:.2s;font-family:inherit}
+textarea{width:100%;padding:10px 13px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;transition:.2s;font-family:inherit}
 textarea{resize:vertical;min-height:80px}
-input:focus,select:focus,textarea:focus{border-color:var(--primary);background:var(--surface)}
+input:focus,select:focus,textarea:focus{border-color:var(--primary);background:var(--surface);outline:none}
 
 /* ===== PROGRESS ===== */
 .progress-bar{height:6px;border-radius:4px;background:var(--surface-2);overflow:hidden}
@@ -1890,10 +1932,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--primary);background:v
 /* ===== MODAL ===== */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;display:none;align-items:center;justify-content:center;padding:20px}
 .modal-overlay.open{display:flex}
-.modal{background:var(--surface);border-radius:20px;padding:28px;width:100%;max-width:520px;box-shadow:var(--shadow-lg);max-height:90vh;overflow-y:auto}
+.modal{background:var(--surface);border-radius:20px;padding:28px;width:100%;max-width:520px;box-shadow:var(--shadow-lg);max-height:90vh;overflow-y:auto;color:var(--text)}
 .modal-lg{max-width:680px}
 .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.modal-header h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:700}
+.modal-header h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text)}
 .modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 
 /* ===== TOAST ===== */
@@ -1909,8 +1951,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--primary);background:v
 .notif-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .notif-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);transition:.15s;cursor:pointer}
 .notif-item:hover{background:var(--surface-2)}
-.notif-item.unread{background:var(--primary-light)}
-.notif-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;background:var(--surface-2)}
+.notif-item.unread{background:var(--surface-2)}
+.notif-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;background:var(--surface-3)}
 .notif-text{font-size:12px;color:var(--text-2);margin-top:2px}
 .notif-time{font-size:11px;color:var(--text-3);margin-top:4px}
 
@@ -2152,12 +2194,15 @@ if ($db_theme['is_dark']) {
   --primary-dark: hsl(<?php echo htmlspecialchars($db_theme['primary_dark']); ?>);
   --primary-light: hsl(<?php echo htmlspecialchars($db_theme['primary_light']); ?>);
   --bg: hsl(<?php echo htmlspecialchars($db_theme['bg_color']); ?>);
-  --surface: hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?>);
-  --surface-2: hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?> / 0.72);
+  /* surface = neutral white for content areas (not primary) */
+  --surface:   hsl(<?php echo htmlspecialchars($db_theme['surface_color']); ?>);
+  --surface-2: hsl(<?php echo htmlspecialchars(php_shift_l($db_theme['bg_color'], -2)); ?>);
+  --surface-3: hsl(<?php echo htmlspecialchars(php_shift_l($db_theme['bg_color'], -5)); ?>);
   --border: hsl(<?php echo htmlspecialchars($db_theme['border_color']); ?>);
+  --border-strong: hsl(<?php echo htmlspecialchars(php_shift_l($db_theme['border_color'], -8)); ?>);
   --text: hsl(<?php echo htmlspecialchars($db_theme['text_color']); ?>);
   --text-2: hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?>);
-  --text-3: hsl(<?php echo htmlspecialchars($db_theme['text_secondary']); ?> / 0.6);
+  --text-3: hsl(<?php echo htmlspecialchars(php_shift_l($db_theme['text_secondary'], +12)); ?>);
   <?php if ($db_theme['accent_color']): ?>--secondary: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>); --accent: hsl(<?php echo htmlspecialchars($db_theme['accent_color']); ?>);<?php endif; ?>
   --primary-glow: hsla(<?php echo htmlspecialchars($db_theme['primary_color']); ?>, 0.12);
 }
@@ -2187,13 +2232,13 @@ if ($db_theme['is_dark']) {
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
         <svg width="30" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <polygon points="26,13 41,20.5 26,28 11,20.5" fill="var(--primary)"/>
-          <line x1="38" y1="20.5" x2="38" y2="31" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round"/>
-          <circle cx="38" cy="33" r="2.2" fill="var(--primary)"/>
-          <path d="M13,36 Q18,32 23,36 Q28,40 33,36 Q38,32 43,36" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" fill="none"/>
-          <path d="M15,42 Q20,38 25,42 Q30,46 35,42 Q40,38 45,42" stroke="var(--primary)" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.6"/>
+          <polygon points="26,13 41,20.5 26,28 11,20.5" fill="rgba(255,255,255,0.9)"/>
+          <line x1="38" y1="20.5" x2="38" y2="31" stroke="rgba(255,255,255,0.9)" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="38" cy="33" r="2.2" fill="rgba(255,255,255,0.9)"/>
+          <path d="M13,36 Q18,32 23,36 Q28,40 33,36 Q38,32 43,36" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" fill="none"/>
+          <path d="M15,42 Q20,38 25,42 Q30,46 35,42 Q40,38 45,42" stroke="rgba(255,255,255,0.9)" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.6"/>
         </svg>    
-          <div class="sidebar-brand">Learn<span style="color:var(--primary)">Flow</span></div>
+          <div class="sidebar-brand">Learn<span style="color:rgba(255,255,255,0.7)">Flow</span></div>
   </div>
 
   <div id="navMenu"></div>
@@ -6062,12 +6107,35 @@ function renderSettings() {
       </div>
 
       <div class="card" style="margin-bottom:16px" id="themeCard">
-        <h3 style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-bottom:6px">🎨 Portal Theme</h3>
-        <p style="font-size:12px;color:var(--text-2);margin-bottom:14px">Changes apply to <strong>all portals</strong> (admin, instructor, student). Use the color builder below to set a custom theme.</p>
+        <h3 style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-bottom:4px">🎨 Portal Theme</h3>
+        <p style="font-size:12px;color:var(--text-2);margin-bottom:16px">Choose a preset or build a custom theme. Changes apply to <strong>all portals</strong>.</p>
 
-        <!-- Custom color picker -->
-        <div style="margin-bottom:14px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <!-- ── Tab bar ─────────────────────────────────────────────── -->
+        <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;background:var(--surface-2)">
+          <button id="themeTabPresets" onclick="switchThemeTab('presets')" style="flex:1;padding:8px 12px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:var(--primary);color:#fff;transition:.15s">🎨 Presets</button>
+          <button id="themeTabCustom"  onclick="switchThemeTab('custom')"  style="flex:1;padding:8px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:var(--text-2);transition:.15s">🖌 Custom</button>
+        </div>
+
+        <!-- ── Preset gallery ──────────────────────────────────────── -->
+        <div id="themePanelPresets">
+
+          <!-- Filter chips -->
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+            <button class="theme-chip active" onclick="filterPresets('all',this)">All</button>
+            <button class="theme-chip" onclick="filterPresets('light',this)">☀ Light</button>
+            <button class="theme-chip" onclick="filterPresets('dark',this)">🌙 Dark</button>
+            <button class="theme-chip" onclick="filterPresets('neon',this)">⚡ Neon</button>
+            <button class="theme-chip" onclick="filterPresets('pastel',this)">🌸 Pastel</button>
+            <button class="theme-chip" onclick="filterPresets('gradient',this)">🌈 Gradient</button>
+          </div>
+
+          <!-- Preset grid — populated by JS -->
+          <div id="themePresetGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px"></div>
+        </div>
+
+        <!-- ── Custom builder ──────────────────────────────────────── -->
+        <div id="themePanelCustom" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
             <div class="form-group">
               <label class="form-label">Primary Color</label>
               <div style="display:flex;align-items:center;gap:8px">
@@ -6087,34 +6155,66 @@ function renderSettings() {
               </div>
             </div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="buildAndPreviewCustomTheme()" style="margin-top:8px">👁 Preview Custom Theme</button>
+
+          <!-- Quick hex shortcuts -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:11px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Quick Colors</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${[['#CC3A72','Rose'],['#7C3AED','Violet'],['#1A6FBF','Blue'],['#299453','Green'],
+                 ['#F25C19','Orange'],['#DC2626','Red'],['#E8B923','Gold'],['#00BFAE','Teal'],
+                 ['#EE829A','Sakura'],['#9B3EFF','Neon V'],['#00E5FF','Neon C'],['#80FF00','Neon L']
+              ].map(([hex,label])=>`
+                <button title="${label}" onclick="applyQuickHex('${hex}')"
+                  style="width:26px;height:26px;border-radius:50%;background:${hex};border:2.5px solid transparent;cursor:pointer;transition:.15s;padding:0"
+                  onmouseover="this.style.transform='scale(1.22)'" onmouseout="this.style.transform='scale(1)'"></button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label style="font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="customIsDark" style="accent-color:var(--primary)"> Dark mode base
+            </label>
+            <button class="btn btn-outline btn-sm" onclick="buildAndPreviewCustomTheme()">👁 Preview</button>
+          </div>
         </div>
 
-        <!-- Live preview bar -->
-        <div style="border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;background:var(--surface-2)">
-          <div style="font-size:11px;color:var(--text-3);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Preview</div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-            <div id="previewSwatchPrimary"     style="width:22px;height:22px;border-radius:5px;background:var(--primary);border:1px solid rgba(0,0,0,.08)"></div>
-            <div id="previewSwatchDark"        style="width:22px;height:22px;border-radius:5px;background:var(--primary-dark);border:1px solid rgba(0,0,0,.08)"></div>
-            <div id="previewSwatchLight"       style="width:22px;height:22px;border-radius:5px;background:var(--primary-light);border:1px solid rgba(0,0,0,.08)"></div>
-            <div id="previewSwatchAccent"      style="width:22px;height:22px;border-radius:5px;background:var(--secondary);border:1px solid rgba(0,0,0,.08)"></div>
-            <span id="themeCurrentName" style="font-size:12px;font-weight:600;color:var(--text-2);margin-left:4px">Loading…</span>
+        <!-- ── Active theme preview strip ─────────────────────────── -->
+        <div style="border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-top:14px;margin-bottom:12px;background:var(--surface-2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3)">Active Preview</span>
+            <span id="themeCurrentName" style="font-size:12px;font-weight:700;color:var(--primary)">Loading…</span>
           </div>
-          <div style="display:flex;gap:6px">
-            <div style="height:8px;flex:1;border-radius:4px;background:var(--primary)"></div>
-            <div style="height:8px;flex:1;border-radius:4px;background:var(--secondary,#4AAEE8)"></div>
-            <div style="height:8px;flex:1;border-radius:4px;background:var(--primary-light)"></div>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+            <div id="previewSwatchPrimary" style="width:28px;height:28px;border-radius:7px;background:var(--primary-gradient,var(--primary));border:1px solid rgba(0,0,0,.08)"></div>
+            <div id="previewSwatchDark"    style="width:20px;height:20px;border-radius:5px;background:var(--primary-dark);border:1px solid rgba(0,0,0,.08)"></div>
+            <div id="previewSwatchLight"   style="width:20px;height:20px;border-radius:5px;background:var(--primary-light);border:1px solid rgba(0,0,0,.08)"></div>
+            <div id="previewSwatchAccent"  style="width:20px;height:20px;border-radius:5px;background:var(--secondary,#4AAEE8);border:1px solid rgba(0,0,0,.08)"></div>
+          </div>
+          <div style="display:flex;gap:5px">
+            <div style="height:5px;flex:3;border-radius:3px;background:var(--primary-gradient,var(--primary))"></div>
+            <div style="height:5px;flex:2;border-radius:3px;background:var(--secondary,#4AAEE8)"></div>
+            <div style="height:5px;flex:2;border-radius:3px;background:var(--primary-light)"></div>
+            <div style="height:5px;flex:1;border-radius:3px;background:var(--border)"></div>
           </div>
         </div>
 
         <div id="themeSaveStatus" style="font-size:12px;min-height:16px;margin-bottom:8px"></div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-outline btn-sm" onclick="resetThemeToDefault()">↺ Reset to Default</button>
-          <button class="btn btn-primary btn-sm" id="themeSaveBtn" onclick="saveThemeToDB()" style="display:inline-flex;align-items:center;gap:6px">
+          <button class="btn btn-outline btn-sm" onclick="resetThemeToDefault()">↺ Reset</button>
+          <button class="btn btn-primary btn-sm" id="themeSaveBtn" onclick="saveThemeToDB()" style="display:inline-flex;align-items:center;gap:6px;flex:1;justify-content:center">
             💾 Save &amp; Apply to All Portals
           </button>
         </div>
       </div>
+
+      <style>
+        .theme-chip{padding:5px 11px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-2);font-size:11px;font-weight:600;cursor:pointer;transition:.15s}
+        .theme-chip.active,.theme-chip:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+        .preset-tile{border:2px solid var(--border);border-radius:10px;padding:9px;cursor:pointer;transition:.2s;background:var(--surface)}
+        .preset-tile:hover{border-color:var(--primary);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.12)}
+        .preset-tile.selected{border-color:var(--primary);box-shadow:0 0 0 3px hsl(var(--primary-hsl)/.25)}
+      </style>
 
       <div class="card" style="margin-bottom:16px">
         <h3 style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-bottom:14px">System Preferences</h3>
@@ -6349,16 +6449,197 @@ function sendAdminAnnouncement() {
 // Pending theme state (before save)
 let _pendingTheme = null;
 
+/* ── Built-in presets (mirrors theme.php get_theme_presets) ─────────────── */
+const THEME_PRESETS = [
+  { id:'rose-pink',         name:'Rose Pink',          tags:['light'],         desc:'The original LearnFlow brand',
+    p:'336 67% 52%', d:'336 67% 40%', l:'336 20% 97%', bg:'336 12% 98%', surface:'0 0% 100%', border:'336 12% 92%', text:'336 20% 10%', text2:'336 12% 44%', acc:'207 80% 60%', dark:0,
+    hex:['#CC3A72','#FAF9FA','#FFFFFF','#4AAEE8'] },
+  { id:'ocean-blue',        name:'Ocean Blue',         tags:['light'],         desc:'Deep ocean — professional, calm',
+    p:'211 84% 52%', d:'211 84% 40%', l:'211 20% 97%', bg:'211 12% 98%', surface:'0 0% 100%', border:'211 12% 92%', text:'211 25% 10%', text2:'211 12% 44%', acc:'158 64% 52%', dark:0,
+    hex:['#1A6FBF','#F8FAFC','#FFFFFF','#2FC68A'] },
+  { id:'forest-green',      name:'Forest Green',       tags:['light'],         desc:'Natural — fresh and focused',
+    p:'145 63% 42%', d:'145 63% 30%', l:'145 20% 97%', bg:'145 10% 98%', surface:'0 0% 100%', border:'145 10% 92%', text:'145 25% 10%', text2:'145 12% 44%', acc:'45 90% 58%', dark:0,
+    hex:['#299453','#F7FAF8','#FFFFFF','#F0B429'] },
+  { id:'royal-purple',      name:'Royal Purple',       tags:['light'],         desc:'Elegant and prestigious',
+    p:'262 80% 58%', d:'262 80% 46%', l:'262 20% 97%', bg:'262 10% 98%', surface:'0 0% 100%', border:'262 10% 92%', text:'262 25% 10%', text2:'262 12% 44%', acc:'335 80% 58%', dark:0,
+    hex:['#7C3AED','#FAF8FC','#FFFFFF','#E8608A'] },
+  { id:'sunset-orange',     name:'Sunset Orange',      tags:['light'],         desc:'Energetic and inspiring',
+    p:'24 95% 53%', d:'24 95% 41%', l:'24 20% 97%', bg:'24 10% 98%', surface:'0 0% 100%', border:'24 10% 92%', text:'24 25% 10%', text2:'24 12% 44%', acc:'211 84% 52%', dark:0,
+    hex:['#F25C19','#FAF8F5','#FFFFFF','#1A6FBF'] },
+  { id:'crimson-red',       name:'Crimson Red',        tags:['light'],         desc:'Confident and assertive',
+    p:'0 72% 51%', d:'0 72% 39%', l:'0 20% 97%', bg:'0 8% 98%', surface:'0 0% 100%', border:'0 8% 92%', text:'0 20% 10%', text2:'0 12% 44%', acc:'196 80% 55%', dark:0,
+    hex:['#DC2626','#FAF5F5','#FFFFFF','#22D3EE'] },
+  { id:'midnight-dark',     name:'Midnight Dark',      tags:['dark'],          desc:'Elegant dark — easy on the eyes',
+    p:'336 80% 65%', d:'336 80% 53%', l:'336 30% 20%', bg:'230 15% 8%', surface:'230 15% 12%', border:'230 12% 18%', text:'230 20% 92%', text2:'230 12% 68%', acc:'207 80% 65%', dark:1,
+    hex:['#E8608A','#101216','#16191E','#4AAEE8'] },
+  { id:'slate-dark',        name:'Slate Dark',         tags:['dark'],          desc:'Modern and minimal',
+    p:'211 84% 62%', d:'211 84% 50%', l:'211 30% 20%', bg:'215 20% 8%', surface:'215 20% 12%', border:'215 15% 18%', text:'215 25% 92%', text2:'215 15% 68%', acc:'145 63% 52%', dark:1,
+    hex:['#3B82F6','#0F1219','#151B26','#22C55E'] },
+  { id:'emerald-dark',      name:'Emerald Dark',       tags:['dark'],          desc:'Vibrant and sophisticated',
+    p:'145 63% 48%', d:'145 63% 36%', l:'145 30% 20%', bg:'160 20% 7%', surface:'160 20% 11%', border:'160 15% 17%', text:'160 25% 92%', text2:'160 15% 68%', acc:'45 90% 58%', dark:1,
+    hex:['#22C55E','#0B0F0D','#101713','#FACC15'] },
+  { id:'neon-cyan',         name:'Neon Cyan',          tags:['dark','neon'],   desc:'Electric cyan — ultra-modern',
+    p:'185 100% 50%', d:'185 100% 38%', l:'185 40% 18%', bg:'220 25% 6%', surface:'220 25% 10%', border:'185 40% 18%', text:'185 20% 93%', text2:'185 15% 62%', acc:'290 100% 68%', dark:1,
+    hex:['#00E5FF','#090D12','#0E1419','#CC44FF'] },
+  { id:'neon-lime',         name:'Neon Lime',          tags:['dark','neon'],   desc:'High-voltage lime on charcoal',
+    p:'80 100% 50%', d:'80 100% 38%', l:'80 40% 18%', bg:'215 22% 7%', surface:'215 22% 11%', border:'80 30% 18%', text:'80 15% 93%', text2:'80 12% 62%', acc:'35 100% 55%', dark:1,
+    hex:['#80FF00','#0A0D10','#10141A','#FF9500'] },
+  { id:'pastel-lavender',   name:'Pastel Lavender',    tags:['light','pastel'],desc:'Gentle and dreamy',
+    p:'265 60% 65%', d:'265 60% 52%', l:'265 80% 96%', bg:'265 40% 97%', surface:'265 20% 100%', border:'265 30% 88%', text:'265 30% 15%', text2:'265 20% 48%', acc:'325 70% 68%', dark:0,
+    hex:['#9B72CF','#F5F2FB','#FFFFFF','#E879A8'] },
+  { id:'pastel-peach',      name:'Pastel Peach',       tags:['light','pastel'],desc:'Soft, inviting, cozy',
+    p:'20 85% 65%', d:'20 85% 52%', l:'20 100% 96%', bg:'20 50% 97%', surface:'0 0% 100%', border:'20 40% 88%', text:'20 30% 15%', text2:'20 20% 48%', acc:'175 55% 48%', dark:0,
+    hex:['#F4845F','#FDF7F4','#FFFFFF','#2BBFA0'] },
+  { id:'earth-terracotta',  name:'Earth & Terracotta', tags:['light'],         desc:'Warm, grounded, organic',
+    p:'15 65% 48%', d:'15 65% 36%', l:'15 40% 95%', bg:'30 20% 96%', surface:'30 15% 100%', border:'30 20% 86%', text:'20 30% 12%', text2:'20 18% 44%', acc:'45 70% 52%', dark:0,
+    hex:['#C0512A','#F7F3F0','#FFFFFF','#D4A017'] },
+  { id:'nordic-frost',      name:'Nordic Frost',       tags:['light'],         desc:'Clean, minimal, Scandinavian',
+    p:'205 55% 48%', d:'205 55% 36%', l:'205 35% 95%', bg:'210 20% 96%', surface:'210 10% 100%', border:'210 20% 87%', text:'210 25% 12%', text2:'210 15% 44%', acc:'155 45% 48%', dark:0,
+    hex:['#3A7EAF','#F3F6F9','#FFFFFF','#3AA87A'] },
+  { id:'gold-luxury',       name:'Gold Luxury',        tags:['dark'],          desc:'Opulent navy + champagne gold',
+    p:'43 90% 52%', d:'43 90% 38%', l:'43 50% 18%', bg:'222 35% 8%', surface:'222 35% 12%', border:'43 30% 20%', text:'43 20% 93%', text2:'43 15% 62%', acc:'222 70% 58%', dark:1,
+    hex:['#E8B923','#0A0C14','#10131E','#4A7EE8'] },
+  { id:'sakura',            name:'Sakura',             tags:['light','pastel'],desc:'Japanese cherry blossom',
+    p:'345 75% 68%', d:'345 75% 54%', l:'345 80% 97%', bg:'345 30% 98%', surface:'0 0% 100%', border:'345 25% 89%', text:'345 25% 14%', text2:'345 15% 48%', acc:'195 65% 52%', dark:0,
+    hex:['#EE829A','#FDF8F9','#FFFFFF','#2AA8C8'] },
+  { id:'obsidian-violet',   name:'Obsidian Violet',    tags:['dark','neon'],   desc:'Deep obsidian + vivid violet',
+    p:'270 90% 65%', d:'270 90% 52%', l:'270 40% 18%', bg:'240 20% 6%', surface:'240 20% 10%', border:'270 30% 18%', text:'270 15% 93%', text2:'270 12% 62%', acc:'160 70% 50%', dark:1,
+    hex:['#9B3EFF','#0A090F','#100F18','#1FBD80'] },
+
+  /* ── GRADIENT PRESETS ───────────────────────────────────────────────────── */
+  { id:'grad-aurora',       name:'Aurora',             tags:['gradient','dark'],  desc:'Northern lights — teal to violet',
+    p:'185 90% 52%', d:'270 80% 55%', l:'185 40% 18%', bg:'230 25% 7%', surface:'230 25% 11%', border:'200 30% 18%', text:'200 15% 93%', text2:'200 12% 65%', acc:'145 70% 55%', dark:1,
+    hex:['#00D4C8','#0A0D14','#101520','#6B3EEF'],
+    gradient:'linear-gradient(135deg, #00D4C8 0%, #4A5EFF 50%, #9B3EEF 100%)',
+    gradFrom:'185 90% 52%', gradTo:'270 80% 55%', gradMid:'235 90% 63%' },
+
+  { id:'grad-sunset',       name:'Sunset Blaze',       tags:['gradient','light'], desc:'Golden hour — amber to deep rose',
+    p:'28 95% 58%', d:'0 85% 55%', l:'28 100% 96%', bg:'25 30% 97%', surface:'0 0% 100%', border:'25 20% 88%', text:'20 30% 12%', text2:'20 18% 44%', acc:'350 80% 60%', dark:0,
+    hex:['#FF9A3C','#FDF7F2','#FFFFFF','#FF4A6E'],
+    gradient:'linear-gradient(135deg, #FFBD3C 0%, #FF7A3C 50%, #FF3A6E 100%)',
+    gradFrom:'45 100% 62%', gradTo:'345 100% 61%', gradMid:'20 100% 62%' },
+
+  { id:'grad-ocean-depths', name:'Ocean Depths',       tags:['gradient','dark'],  desc:'Deep sea — navy to emerald',
+    p:'205 90% 55%', d:'165 80% 42%', l:'205 40% 18%', bg:'220 30% 7%', surface:'220 30% 11%', border:'210 25% 18%', text:'210 15% 93%', text2:'210 12% 65%', acc:'165 70% 52%', dark:1,
+    hex:['#1A7FBF','#090E14','#0F1620','#1FC88A'],
+    gradient:'linear-gradient(135deg, #0B4F8A 0%, #1A7FBF 40%, #1FC88A 100%)',
+    gradFrom:'211 84% 30%', gradTo:'160 74% 45%', gradMid:'195 80% 40%' },
+
+  { id:'grad-candy',        name:'Candy Pop',          tags:['gradient','light','pastel'], desc:'Sweet & playful — pink to sky',
+    p:'320 80% 65%', d:'200 75% 55%', l:'320 80% 96%', bg:'300 30% 98%', surface:'0 0% 100%', border:'300 20% 88%', text:'280 25% 15%', text2:'280 15% 48%', acc:'195 75% 55%', dark:0,
+    hex:['#F060B0','#FDF5FB','#FFFFFF','#30C0F0'],
+    gradient:'linear-gradient(135deg, #F060B0 0%, #A050E0 50%, #30C0F0 100%)',
+    gradFrom:'320 85% 66%', gradTo:'200 85% 57%', gradMid:'275 80% 60%' },
+
+  { id:'grad-midnight-fire',name:'Midnight Fire',      tags:['gradient','dark'],  desc:'Dark base — orange to crimson glow',
+    p:'25 100% 60%', d:'0 90% 52%', l:'25 50% 18%', bg:'220 25% 6%', surface:'220 25% 10%', border:'15 30% 18%', text:'20 15% 93%', text2:'20 12% 62%', acc:'45 95% 58%', dark:1,
+    hex:['#FF8C00','#09090E','#100F18','#FF3838'],
+    gradient:'linear-gradient(135deg, #FF8C00 0%, #FF4800 50%, #FF1A1A 100%)',
+    gradFrom:'33 100% 50%', gradTo:'0 100% 55%', gradMid:'15 100% 52%' },
+
+  { id:'grad-galaxy',       name:'Galaxy',             tags:['gradient','dark'],  desc:'Cosmic purple — indigo to magenta',
+    p:'260 85% 65%', d:'300 80% 58%', l:'260 40% 18%', bg:'245 25% 6%', surface:'245 25% 10%', border:'260 30% 18%', text:'260 15% 93%', text2:'260 12% 65%', acc:'185 80% 55%', dark:1,
+    hex:['#6633EE','#08080F','#100E1A','#EE33AA'],
+    gradient:'linear-gradient(135deg, #3B1FCC 0%, #7B2FEE 40%, #CC1FAA 100%)',
+    gradFrom:'252 75% 46%', gradTo:'310 75% 58%', gradMid:'280 78% 52%' },
+];
+
+let _activePresetFilter = 'all';
+let _selectedPresetId   = null;
+
+function switchThemeTab(tab) {
+  const isPreset = tab === 'presets';
+  document.getElementById('themePanelPresets').style.display = isPreset ? '' : 'none';
+  document.getElementById('themePanelCustom').style.display  = isPreset ? 'none' : '';
+  document.getElementById('themeTabPresets').style.cssText =
+    isPreset ? 'flex:1;padding:8px 12px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:var(--primary);color:#fff;transition:.15s'
+             : 'flex:1;padding:8px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:var(--text-2);transition:.15s';
+  document.getElementById('themeTabCustom').style.cssText =
+    !isPreset ? 'flex:1;padding:8px 12px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:var(--primary);color:#fff;transition:.15s'
+              : 'flex:1;padding:8px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:var(--text-2);transition:.15s';
+}
+
+function filterPresets(tag, btn) {
+  _activePresetFilter = tag;
+  btn.closest('div').querySelectorAll('.theme-chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  renderPresetGrid();
+}
+
+function renderPresetGrid() {
+  const grid = document.getElementById('themePresetGrid');
+  if (!grid) return;
+  const filter = _activePresetFilter;
+  const visible = filter === 'all' ? THEME_PRESETS : THEME_PRESETS.filter(p => p.tags.includes(filter));
+  grid.innerHTML = visible.map(pr => {
+    const isSel = pr.id === _selectedPresetId;
+    const isGrad = !!pr.gradient;
+
+    /* Badge — priority: gradient > neon > pastel > dark */
+    let badge = '';
+    if (isGrad)                    badge = '<span style="font-size:9px;background:linear-gradient(90deg,#f06,#a0f,#0cf);color:#fff;padding:1px 6px;border-radius:4px;position:absolute;top:6px;right:6px;font-weight:700">gradient</span>';
+    else if (pr.tags.includes('neon'))   badge = '<span style="font-size:9px;background:rgba(0, 0, 0, 0.18);color:#0af;padding:1px 5px;border-radius:4px;position:absolute;top:6px;right:6px"></span>';
+    else if (pr.tags.includes('pastel')) badge = '<span style="font-size:9px;background:rgba(200,100,200,.18);color:#b06;padding:1px 5px;border-radius:4px;position:absolute;top:6px;right:6px"></span>';
+    else if (pr.dark)                    badge = '<span style="font-size:9px;background:rgba(0,0,0,.35);color:#ccc;padding:1px 5px;border-radius:4px;position:absolute;top:6px;right:6px"></span>';
+
+    /* Swatch — gradient presets get a full-width gradient bar; others get 3 color chips */
+    const swatch = isGrad
+      ? `<div style="height:22px;border-radius:5px;margin-bottom:7px;background:${pr.gradient}"></div>`
+      : `<div style="display:flex;gap:3px;margin-bottom:7px">
+           <div style="flex:3;height:18px;border-radius:4px;background:${pr.hex[0]}"></div>
+           <div style="flex:2;height:18px;border-radius:4px;background:${pr.hex[1]}"></div>
+           <div style="flex:1;height:18px;border-radius:4px;background:${pr.hex[3]}"></div>
+         </div>`;
+
+    return `
+      <div class="preset-tile${isSel ? ' selected' : ''}" onclick="selectPreset('${pr.id}')" style="position:relative">
+        ${swatch}
+        <div style="font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pr.name}</div>
+        <div style="font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pr.desc}</div>
+        ${badge}
+        ${isSel ? '<div style="position:absolute;bottom:6px;right:6px;font-size:13px">✓</div>' : ''}
+      </div>`;
+  }).join('');
+}
+
+function selectPreset(id) {
+  const pr = THEME_PRESETS.find(p => p.id === id);
+  if (!pr) return;
+  _selectedPresetId = id;
+  renderPresetGrid();
+  _pendingTheme = {
+    name: pr.name, primary_color: pr.p, primary_dark: pr.d, primary_light: pr.l,
+    bg_color: pr.bg, surface_color: pr.surface, border_color: pr.border,
+    text_color: pr.text, text_secondary: pr.text2, accent_color: pr.acc, is_dark: pr.dark,
+    gradient: pr.gradient || null,
+  };
+  _applyThemeVars({ p:pr.p, d:pr.d, l:pr.l, bg:pr.bg, surface:pr.surface, border:pr.border, text:pr.text, text2:pr.text2, acc:pr.acc, gradient: pr.gradient || null });
+  const el = document.getElementById('themeCurrentName');
+  if (el) el.textContent = pr.name;
+  showToast('Previewing: ' + pr.name + ' — click Save to apply.', '');
+}
+
+/* Apply a quick hex dot from the Custom builder */
+function applyQuickHex(hex) {
+  const picker = document.getElementById('themePickerPrimary');
+  if (picker) { picker.value = hex; onThemeColorInput(picker); }
+}
+
 // Load current theme name from DB on settings page open
 async function loadCurrentThemeName() {
   const el = document.getElementById('themeCurrentName');
   if (!el) return;
+  /* Boot the preset grid */
+  renderPresetGrid();
   try {
     const res  = await fetch('?action=get_theme', { headers:{'X-Requested-With':'XMLHttpRequest'} });
     const data = await res.json();
     if (data.success && data.theme) {
       el.textContent = data.theme.name || 'Custom';
       _pendingTheme  = data.theme;
+      /* Mark the matching preset as selected */
+      const match = THEME_PRESETS.find(p => p.name === data.theme.name);
+      if (match) { _selectedPresetId = match.id; renderPresetGrid(); }
       // ── Apply the saved DB theme immediately so the preview reflects reality ──
       _applyThemeVars({
         p:      data.theme.primary_color,
@@ -6370,6 +6651,7 @@ async function loadCurrentThemeName() {
         text:   data.theme.text_color,
         text2:  data.theme.text_secondary,
         acc:    data.theme.accent_color,
+        gradient: data.theme.gradient || (match ? match.gradient || null : null),
       });
     } else {
       el.textContent = 'Rose Pink (default)';
@@ -6415,6 +6697,33 @@ function _applyThemeVars(t) {
   document.head.appendChild(style);
   const dk   = _darkVariants(t);
   const surf = t.surface || '0 0% 100%';
+  // surface-2 and -3 are slight darkening of bg (neutral tones, not primary)
+  const surf2 = _shiftL(t.bg, -2);
+  const surf3 = _shiftL(t.bg, -5);
+
+  /* Gradient support — if a gradient string is provided, use it for buttons/accents */
+  const grad = t.gradient || null;
+  // --primary-gradient is always a CSS variable (safe inside :root).
+  // Rule-set overrides (.btn-primary etc.) MUST live OUTSIDE :root{} — they are
+  // invalid inside a CSS declaration block and cause a full parse error.
+  const primaryGradientVar = grad
+    ? `--primary-gradient: ${grad};`
+    : `--primary-gradient: linear-gradient(135deg, hsl(${t.p}), hsl(${t.d}));`;
+
+  const gradRuleOverrides = grad ? `
+/* ── Gradient rule overrides (outside :root) ── */
+.btn-primary, button.btn-primary {
+  background: ${grad} !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,.28) !important;
+}
+.sidebar { background: ${grad} !important; }
+.topbar  { background: ${grad} !important; }
+.stat-card { background: ${grad} !important; }
+.avatar-sm, #adminAvatarInitials { background: ${grad} !important; }
+.badge-purple { background: ${grad} !important; color: #fff !important; }
+` : '';
+
   style.textContent = `
 :root {
   --primary:      hsl(${t.p});
@@ -6422,15 +6731,16 @@ function _applyThemeVars(t) {
   --primary-light:hsl(${t.l});
   --bg:           hsl(${t.bg});
   --surface:      hsl(${surf});
-  --surface-2:    hsl(${_shiftL(t.bg, -3)});
-  --surface-3:    hsl(${_shiftL(t.bg, -6)});
+  --surface-2:    hsl(${surf2});
+  --surface-3:    hsl(${surf3});
   --border:       hsl(${t.border});
   --border-strong:hsl(${_shiftL(t.border, -8)});
   --text:         hsl(${t.text});
   --text-2:       hsl(${t.text2});
-  --text-3:       hsl(${_shiftL(t.text2, +20)});
+  --text-3:       hsl(${_shiftL(t.text2, +12)});
   --secondary:    hsl(${t.acc});
   --primary-glow: hsla(${t.p}, 0.12);
+  ${primaryGradientVar}
 }
 [data-theme="dark"] {
   --primary:      hsl(${dk.p});
@@ -6447,7 +6757,8 @@ function _applyThemeVars(t) {
   --text-3:       hsl(${dk.text3});
   --secondary:    hsl(${dk.acc});
   --primary-glow: hsla(${dk.p}, 0.18);
-}`;
+}
+${gradRuleOverrides}`;
 }
 
 // Hex → HSL conversion
@@ -6486,23 +6797,37 @@ function onThemeAccentInput(input) {
 }
 
 function buildAndPreviewCustomTheme() {
-  const pHex = document.getElementById('themePickerPrimary').value;
-  const aHex = document.getElementById('themePickerAccent').value;
+  const pHex  = document.getElementById('themePickerPrimary').value;
+  const aHex  = document.getElementById('themePickerAccent').value;
+  const isDark = document.getElementById('customIsDark')?.checked ? 1 : 0;
   const p    = _hexToHsl(pHex);
   const acc  = _hexToHsl(aHex);
   const d    = _adjustHslL(p, -12);
-  const l    = _adjustHslL(p, 45);
-  const bg   = l;
-  const border = _adjustHslL(p, 35);
-  const text  = _adjustHslL(p, -40);
-  const text2 = _adjustHslL(p, -5);
-  const t = { p, d, l, bg, surface:'0 0% 100%', border, text, text2, acc };
+  let l, bg, border, text, text2, surface;
+  if (isDark) {
+    l      = _adjustHslL(p, -35);
+    bg     = _adjustHslL(p, -47);
+    surface = _adjustHslL(p, -43);
+    border  = _adjustHslL(p, -30);
+    text    = _adjustHslL(p, +48);
+    text2   = _adjustHslL(p, +20);
+  } else {
+    l       = _adjustHslL(p, 45);
+    bg      = l;
+    surface = '0 0% 100%';
+    border  = _adjustHslL(p, 35);
+    text    = _adjustHslL(p, -40);
+    text2   = _adjustHslL(p, -5);
+  }
+  const t = { p, d, l, bg, surface, border, text, text2, acc };
   _pendingTheme = {
     name: 'Custom',
     primary_color: p, primary_dark: d, primary_light: l,
-    bg_color: bg, surface_color: '0 0% 100%', border_color: border,
-    text_color: text, text_secondary: text2, accent_color: acc, is_dark: 0,
+    bg_color: bg, surface_color: surface, border_color: border,
+    text_color: text, text_secondary: text2, accent_color: acc, is_dark: isDark,
   };
+  _selectedPresetId = null;
+  renderPresetGrid();
   _applyThemeVars(t);
   const el = document.getElementById('themeCurrentName');
   if (el) el.textContent = 'Custom';
@@ -6532,6 +6857,8 @@ async function saveThemeToDB() {
   fd.append('text_secondary',_pendingTheme.text_secondary || '336 40% 47%');
   fd.append('accent_color',  _pendingTheme.accent_color   || '207 80% 60%');
   fd.append('is_dark',       _pendingTheme.is_dark        || 0);
+  // Send gradient so it survives a page reload via BroadcastChannel / localStorage
+  fd.append('gradient',      _pendingTheme.gradient       || '');
 
   try {
     const res  = await fetch('?action=save_theme', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}, body:fd });
@@ -6542,15 +6869,16 @@ async function saveThemeToDB() {
 
       // ── Apply immediately in THIS tab (BroadcastChannel doesn't fire in sender) ──
       const _themeVars = {
-        p:       _pendingTheme.primary_color,
-        d:       _pendingTheme.primary_dark,
-        l:       _pendingTheme.primary_light,
-        bg:      _pendingTheme.bg_color,
-        surface: _pendingTheme.surface_color,
-        border:  _pendingTheme.border_color,
-        text:    _pendingTheme.text_color,
-        text2:   _pendingTheme.text_secondary,
-        acc:     _pendingTheme.accent_color,
+        p:        _pendingTheme.primary_color,
+        d:        _pendingTheme.primary_dark,
+        l:        _pendingTheme.primary_light,
+        bg:       _pendingTheme.bg_color,
+        surface:  _pendingTheme.surface_color,
+        border:   _pendingTheme.border_color,
+        text:     _pendingTheme.text_color,
+        text2:    _pendingTheme.text_secondary,
+        acc:      _pendingTheme.accent_color,
+        gradient: _pendingTheme.gradient || null,  // carry gradient for live apply
       };
       _applyThemeVars(_themeVars);
 
